@@ -77,8 +77,8 @@
 	current-speed = <115200>;
 };
 
-&i2c1 {
-	pinctrl-0 = <&i2c1_scl_remap1_pb8 &i2c1_sda_remap1_pb9>;
+&i2c2 {
+	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
 	pinctrl-names = "default";
 	status = "okay";
 	clock-frequency = <I2C_BITRATE_FAST>;
@@ -138,3 +138,7 @@ zephyr_udc0: &usb {
 &die_temp {
 	status = "okay";
 };
+
+/* for ssd1306_128x32.overlay */
+arduino_i2c: &i2c2 {};
+
