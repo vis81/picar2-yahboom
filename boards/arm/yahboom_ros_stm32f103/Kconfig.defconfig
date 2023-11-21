@@ -1,0 +1,11 @@
+# STM32F103RCT6 Mini board configuration
+
+# Copyright (c) 2020 WuhanStudio
+# SPDX-License-Identifier: Apache-2.0
+
+if BOARD_YAHBOOM_ROS_STM32F103
+
+config BOARD
+	default "yahboom_ros_stm32f103"
+
+endif # BOARD_YAHBOOM_ROS_STM32F103
