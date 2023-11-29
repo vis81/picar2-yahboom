@@ -7,14 +7,15 @@
 /dts-v1/;
 #include <st/f1/stm32f103Xc.dtsi>
 #include <st/f1/stm32f103r(c-d-e)tx-pinctrl.dtsi>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
 	model = "yahboom_ros_stm32f103 board";
 	compatible = "stm32f103";
 
 	chosen {
-		zephyr,console = &usart1;
-		zephyr,shell-uart = &usart1;
+		zephyr,console = &usart3;
+		zephyr,shell-uart = &usart3;
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 	};
@@ -26,9 +27,18 @@
 			label = "User LD1";
 		};
 	};
+	gpio_keys {
+		compatible = "gpio-keys";
+		user_button: button {
+			label = "User";
+			gpios = <&gpiod 2 GPIO_ACTIVE_LOW>;
+			zephyr,code = <INPUT_KEY_0>;
+		};
+	};
 
 	aliases {
 		led0 = &green_led_1;
+		sw0 = &user_button;
 		watchdog0 = &iwdg;
 		die-temp0 = &die_temp;
 	};
@@ -58,6 +68,7 @@
 	/* usbpre not set: USB clock = 72 / 1.5: 48MHz */
 };
 
+/* serial servo port */
 &usart1 {
 	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
 	pinctrl-names = "default";
@@ -65,6 +76,7 @@
 	status = "okay";
 };
 
+/* SBUS RX only */
 &usart2 {
 	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
 	pinctrl-names = "default";
@@ -72,51 +84,47 @@
 };
 
 &usart3 {
+	/* USB pins */
+	// pinctrl-0 = <&usart3_tx_remap1_pc10 &usart3_rx_remap1_pc11>;
+	/* I2C pins SCL=TX SDA=RX */
 	pinctrl-0 = <&usart3_tx_pb10 &usart3_rx_pb11>;
 	pinctrl-names = "default";
-	current-speed = <115200>;
+	current-speed = <921600>;
+	status = "okay";
 };
 
 &i2c2 {
 	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
 	pinctrl-names = "default";
-	status = "okay";
+	status = "disabled";
+	// status = "okay"; // disable if occupied by usart3
 	clock-frequency = <I2C_BITRATE_FAST>;
-};
-
-&spi1 {
-	pinctrl-0 = <&spi1_nss_master_pa4 &spi1_sck_master_pa5
-		     &spi1_miso_master_pa6 &spi1_mosi_master_pa7>;
-	pinctrl-names = "default";
-	status = "okay";
-};
-
-&spi2 {
-	pinctrl-0 = <&spi2_nss_master_pb12 &spi2_sck_master_pb13
-		     &spi2_miso_master_pb14 &spi2_mosi_master_pb15>;
-	pinctrl-names = "default";
-	status = "okay";
 };
 
 &iwdg {
 	status = "okay";
 };
 
-&timers1 {
-	st,prescaler = <10000>;
+&timers3 {
+	st,prescaler = <1000>;
 	status = "okay";
 
 	pwm1: pwm {
-		status = "okay";
-		pinctrl-0 = <&tim1_ch1_pwm_out_pa8>;
+		status = "disabled";
+		pinctrl-0 = <&tim3_ch1_pwm_out_pa6>;
 		pinctrl-names = "default";
+		gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>;
 	};
-};
 
-zephyr_udc0: &usb {
-	pinctrl-0 = <&usb_dm_pa11 &usb_dp_pa12>;
-	pinctrl-names = "default";
-	status = "okay";
+	pwm_sw_t3: pwm {
+		compatible = "st,stm32-pwm-sw";
+		status = "okay";
+		gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>,
+				<&gpioc 2 GPIO_ACTIVE_HIGH>,
+				<&gpioc 1 GPIO_ACTIVE_HIGH>,
+				<&gpioc 0 GPIO_ACTIVE_HIGH>;
+		channels = <1 2 3 4>;
+	};
 };
 
 &dma1 {
