@@ -1,0 +1,4 @@
+if PWM
+rsource "Kconfig.stm32_sw"
+endif # PWM
+
