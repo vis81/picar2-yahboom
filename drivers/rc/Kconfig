@@ -1,0 +1,18 @@
+# Copyright (c) 2022 Jonathan Hahn
+# SPDX-License-Identifier: Apache-2.0
+
+menuconfig RC
+	bool "RC drivers"
+	help
+	  Enable config options for RC drivers.
+
+if RC
+
+config RC_INIT_PRIORITY
+	int "Sensor init priority"
+	default 90
+	help
+	  RC initialization priority.
+
+rsource "sbus/Kconfig"
+endif

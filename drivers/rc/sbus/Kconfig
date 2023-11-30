@@ -1,0 +1,9 @@
+# Copyright (c) 2022 Jonathan Hahn
+# SPDX-License-Identifier: Apache-2.0
+
+config RC_SBUS
+    bool "RC S.Bus driver"
+    # depends on UART_USE_RUNTIME_CONFIGURE
+    depends on UART_INTERRUPT_DRIVEN
+    help
+      Enable S.Bus RC receiver driver.
