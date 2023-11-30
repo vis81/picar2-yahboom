@@ -1,0 +1,23 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+/ {
+	servo: servo {
+		compatible = "pwm-servo";
+		pwms = <&pwm_sw_t3 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>,
+               <&pwm_sw_t3 2 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		min-pulse = <PWM_USEC(800)>;
+		max-pulse = <PWM_USEC(2200)>;
+	};
+};
+
+&usart2 {
+	current-speed = <100000>;
+	parity = "even";
+	stop-bits = "2";
+	data-bits = <8>;
+	status = "okay";
+    rc: sbus {
+        compatible = "futaba,sbusreceiver";
+        label = "RECEIVER0";
+        status = "okay";
+    };
+};
