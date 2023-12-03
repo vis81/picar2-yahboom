@@ -12,29 +12,48 @@
 #ifndef ZEPHLY_RC_H
 #define ZEPHLY_RC_H
 
-struct Command {
-    float roll; // -1.0 to 1.0
-    float pitch; // -1.0 to 1.0
-    float yaw; // -1.0 to 1.0
-    float thrust; // 0.0 to 1.0
-    bool armed; // disable outputs if false
+struct rc_stats {
+	uint32_t rx_bytes;
+	uint32_t rx_bytes_dropped;
+    uint32_t rx_good;
+    uint32_t rx_bad;
+    uint32_t rx_discarded;
+    uint64_t last_ts;
 };
 
 struct rc_api {
-	void (*update)(const struct device *dev, struct Command *rc_in);
+	int (*read_flags)(const struct device *dev, uint8_t* value, uint64_t* ts);
+	int (*read_channel)(const struct device *dev, uint8_t channel, uint16_t* value, uint64_t* ts);
+	int (*read_all)(const struct device *dev, uint8_t num_channels, uint16_t* values, uint8_t* flags, uint64_t* ts);
+	int (*read_stats)(const struct device *dev, struct rc_stats *stats);
 };
 
-/**
- * @brief update rc_in struct with values from receiver device
- * 
- * @param dev receiver device
- * @param rc_in pointer to rc input to be updated
- */
-static inline void rc_update(const struct device *dev, struct Command *rc_in) {
+static inline int rc_read_stats(const struct device *dev, struct rc_stats *stats) {
     const struct rc_api *api = (struct rc_api*)dev->api;
-    api->update(dev, rc_in);
+    if (api->read_stats)
+		return api->read_stats(dev, stats);
+	return -ENOTSUP;
 }
 
-void rc_update_expo(const struct device *dev, struct Command *rc_in);
+static inline int rc_read_channel(const struct device *dev, uint8_t channel, uint16_t* value, uint64_t* ts) {
+    const struct rc_api *api = (struct rc_api*)dev->api;
+    if (api->read_channel)
+		return api->read_channel(dev, channel, value, ts);
+	return -ENOTSUP;
+}
+
+static inline int rc_read_flags(const struct device *dev, uint8_t* value, uint64_t* ts) {
+    const struct rc_api *api = (struct rc_api*)dev->api;
+    if (api->read_flags)
+		return api->read_flags(dev, value, ts);
+	return -ENOTSUP;
+}
+
+static inline int rc_read_all(const struct device *dev, uint8_t num_channels, uint16_t* values, uint8_t* flags, uint64_t* ts) {
+	const struct rc_api *api = (struct rc_api*)dev->api;
+    if (api->read_all)
+		return api->read_all(dev, num_channels, values, flags, ts);
+	return -ENOTSUP;
+}
 
 #endif // ZEPHLY_RC_H

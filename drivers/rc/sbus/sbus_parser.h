@@ -56,6 +56,7 @@ int sbus_add_to_buffer(struct SBusBuffer *buffer, const uint8_t byte);
  * @param data extracted data
  * @return int 0 when succesful, -errno otherwise
  */
-int sbus_parse_buffer(struct SBusBuffer *buffer, struct SBusData *data);
+//int sbus_parse_buffer(struct SBusBuffer *buffer, struct SBusData *data);
+int sbus_parse_buffer(uint8_t *buffer, struct SBusData *data);
 
 #endif /* SBUS_PARSER_H */

@@ -46,10 +46,11 @@ int sbus_add_to_buffer(struct SBusBuffer *buffer, const uint8_t byte) {
     }
 
     if (!is_byte_valid(byte, buffer->pointer)) {
+		//printk("%02x bad\n", byte);
         reset_buffer(buffer);
         return -EINVAL;
     }
-
+	//printk("%d:%02x\n", buffer->pointer, byte);
     buffer->data[buffer->pointer] = byte;
     buffer->pointer++;
 
@@ -88,7 +89,7 @@ static void sbus_parse_flags_byte(uint8_t flags_byte, struct SBusData *data) {
     data->failsafe_active = flags_byte & SBUS_FLAGS_FAILSAFE_MASK;
 }
 
-int sbus_parse_buffer(struct SBusBuffer *buffer, struct SBusData *data) {
+int sbus_parse_buffer2(struct SBusBuffer *buffer, struct SBusData *data) {
 
     if (buffer->pointer != SBUS_RECV_BUFFER_SIZE) {
         return -EINVAL;
@@ -107,6 +108,23 @@ int sbus_parse_buffer(struct SBusBuffer *buffer, struct SBusData *data) {
     sbus_parse_flags_byte(flags_byte, data);
 
     reset_buffer(buffer);
+
+    return 0;
+}
+
+int sbus_parse_buffer(uint8_t *buffer, struct SBusData *data) {
+
+    struct SBusParsingCursor buffer_cursor = {};
+    const uint8_t *raw_data_buffer = &buffer[1];
+
+    for (int servo_chan=0; servo_chan<SBUS_NUM_SERVO_CHANNELS; servo_chan++) {
+        
+        data->servo_channels[servo_chan] = sbus_read_next_servo_chan(&buffer_cursor, raw_data_buffer);
+    }
+
+    const uint8_t flags_byte_position = SBUS_RECV_BUFFER_SIZE - 2;
+    const uint8_t flags_byte = buffer[flags_byte_position];
+    sbus_parse_flags_byte(flags_byte, data);
 
     return 0;
 }

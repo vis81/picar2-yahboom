@@ -6,5 +6,4 @@
 zephyr_include_directories(.)
 
 zephyr_library()
-zephyr_library_sources_ifdef(CONFIG_RC_SBUS 
-    sbus_receiver.c sbus_parser.c)
+zephyr_library_sources_ifdef(CONFIG_RC_SBUS sbus_receiver.c)
