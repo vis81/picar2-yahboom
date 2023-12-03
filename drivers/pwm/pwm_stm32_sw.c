@@ -56,6 +56,7 @@ struct pwm_stm32_data {
 	uint32_t tim_clk;
 	/* Reset controller device configuration */
 	const struct reset_dt_spec reset;
+    uint32_t pulse_cycles[NUM_GPIOS];
 };
 
 /** PWM configuration. */
@@ -154,6 +155,11 @@ static uint32_t __maybe_unused (*const is_capture_active[])(TIM_TypeDef *) = {
 static void __maybe_unused (*const clear_capture_interrupt[])(TIM_TypeDef *) = {
 	LL_TIM_ClearFlag_CC1, LL_TIM_ClearFlag_CC2,
 	LL_TIM_ClearFlag_CC3, LL_TIM_ClearFlag_CC4
+};
+
+static uint32_t __maybe_unused (*const is_it_enabled[])(TIM_TypeDef *) = {
+	LL_TIM_IsEnabledIT_CC1, LL_TIM_IsEnabledIT_CC2,
+	LL_TIM_IsEnabledIT_CC3, LL_TIM_IsEnabledIT_CC4
 };
 
 /**
@@ -291,6 +297,7 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 				pwm_flags_t flags)
 {
 	const struct pwm_stm32_config *cfg = dev->config;
+    struct pwm_stm32_data *data = dev->data;
 
 	uint32_t ll_channel;
 	uint32_t current_ll_channel; /* complementary output if used */
@@ -414,7 +421,7 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 		set_timer_compare[channel - 1u](cfg->timer, pulse_cycles);
 		LL_TIM_SetAutoReload(cfg->timer, period_cycles);
 	}
-
+    data->pulse_cycles[i] = pulse_cycles;
     enable_capture_interrupt[channel - 1](cfg->timer);
 	LL_TIM_EnableIT_UPDATE(cfg->timer);
 	return 0;
@@ -428,27 +435,33 @@ int chan2srbit[] = {
     TIM_SR_CC4IF,
 };
 
+#define CLOCKS_PER_USEC (CONFIG_SYS_CLOCK_HW_CYCLES_PER_SEC / 1000000)
 static void pwm_stm32_isr(const struct device *dev)
 {
 	const struct pwm_stm32_config *cfg = dev->config;
+    struct pwm_stm32_data *data = dev->data;
     int sr = READ_REG(cfg->timer->SR);
+    uint32_t cnt = LL_TIM_GetCounter(cfg->timer);
 #if 0
     int dier = READ_REG(cfg->timer->DIER);
     printk("%10u:isr 0x%x 0x%x 0x%x pin %d\n", k_uptime_get_32(), sr, dier, READ_REG(cfg->timer->CNT), cfg->sw_gpio[0].pin);
 #endif
     for (int i = 0; i < NUM_GPIOS; i++) {
-        int sr_bit = chan2srbit[cfg->channels[i]];
+        int channel = cfg->channels[i];
+        if (!is_it_enabled[channel - 1](cfg->timer))
+            continue;
+        int sr_bit = chan2srbit[channel];
         if (sr & sr_bit) {
-            if (gpio_pin_set_dt(&cfg->sw_gpio[i], 0) < 0)
-                printk("pin set err\n");
+            gpio_pin_set_dt(&cfg->sw_gpio[i], 0);
             WRITE_REG(cfg->timer->SR, ~(sr_bit));
+            if (cnt != data->pulse_cycles[i])
+                printk("cnt=%d, exp %d\n",cnt, data->pulse_cycles[i]);
         }
         if (sr & TIM_SR_UIF) {
-            if (gpio_pin_set_dt(&cfg->sw_gpio[i], 1) < 0)
-                printk("pin set err\n");
+            gpio_pin_set_dt(&cfg->sw_gpio[i], 1);
         }
     }
-    if (sr && TIM_SR_UIF)
+    if (sr & TIM_SR_UIF)
         LL_TIM_ClearFlag_UPDATE(cfg->timer);
 }
 
