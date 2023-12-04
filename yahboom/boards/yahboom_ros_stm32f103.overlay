@@ -1,12 +1,13 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 / {
-	servo: servo {
-		compatible = "pwm-servo";
-		pwms = <&pwm_sw_t3 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>,
-               <&pwm_sw_t3 2 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
-		min-pulse = <PWM_USEC(800)>;
-		max-pulse = <PWM_USEC(2200)>;
-	};
+    servo0: nrf-servo0 {
+        compatible = "pwm-servo";
+        pwms = <&pwm_sw_t3 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+        init_value = <50>;
+        min_pulse_us = <600>;
+        max_pulse_us = <2500>;
+        status = "okay";
+    };
 };
 
 &usart2 {

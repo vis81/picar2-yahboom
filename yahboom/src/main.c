@@ -14,19 +14,26 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/rc.h>
 #include <zephyr/drivers/uart.h>
+#include "zephyr/drivers/pwm_servo.h"
+#include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-#define RC_IN DT_NODELABEL(rc)
-#define SERVO DT_NODELABEL(servo)
+LOG_MODULE_REGISTER(main, CONFIG_APP_LOG_LEVEL);
 
-const struct device *receiver = DEVICE_DT_GET(RC_IN);
-static const struct pwm_dt_spec servo = PWM_DT_SPEC_GET(SERVO);
-static const uint32_t min_pulse = DT_PROP(SERVO, min_pulse);
-static const uint32_t max_pulse = DT_PROP(SERVO, max_pulse);
+#define RC_IN DT_NODELABEL(rc)
+#define SERVO DT_NODELABEL(servo0)
+
+// Simple functions for mapping a value betwen [0, 100] to the
+// range [min, max] and vice versa.
+#define MAP(value, min, max) ((value) * ((max) - (min))/100 + (min))
+#define PAM(value, min, max) (((value) - (min)) * 100 / ((max) - (min)))
+
+static const struct device *receiver = DEVICE_DT_GET(RC_IN);
+static const struct device *servo = DEVICE_DT_GET(SERVO);
 
 static int rc_debug = 0;
 static int rc_enable = 0;
@@ -37,11 +44,10 @@ int main(void)
 
 	printk("Yahboom demo\n");
 
-	if (!pwm_is_ready_dt(&servo)) {
-		printk("Error: PWM device %s is not ready\n", servo.dev->name);
+	if (!device_is_ready(servo)) {
+		printk("Error: PWM device %s is not ready\n", servo->name);
 		return 1;
 	}
-
 	if (!device_is_ready(receiver)) {
 		printk("RC IN device not ready.\n");
 		return 1;
@@ -56,16 +62,16 @@ int main(void)
 		//rc_read_flags(receiver, &flags, &ts);
 		rc_read_all(receiver, 16, chan_val, &flags, &ts);
         if (1) {
-			//pulse_width = min_pulse + (max_pulse - min_pulse) / 2 + rc_in.yaw * (max_pulse - min_pulse);
+			pulse_width = PAM(chan_val[3],0, 0x700);
 			if (rc_debug) {
 				printk("%lld: ", ts);
 				for (int i = 0; i < 16; i++)
 					printk("%04x ", chan_val[i]);
-				printk("%02x\n", flags);
+				printk("%02x, pw %d\n", flags, pulse_width);
 
 			}
 			if (rc_enable) {
-				ret = pwm_set_pulse_dt(&servo, pulse_width);
+				ret = servo_write(servo, pulse_width);
 				if (ret < 0) {
 					printk("Error %d: failed to set pulse width\n", ret);
 				}
@@ -79,18 +85,24 @@ int main(void)
 static int cmd_servo_pulse(const struct shell *sh, size_t argc,
 			      char **argv)
 {
-	int pulse_us;
-	if (sscanf(argv[1],"%d", &pulse_us) != 1) {
+	uint32_t pulse;
+	if (argc == 1) {
+		uint8_t val;
+		servo_read(servo, &val);
+		shell_print(sh, "%u", val);
+		return 0;
+	}
+	if (sscanf(argv[1],"%u", &pulse) != 1) {
 		shell_help(sh);
 		return -EINVAL;
 	}
-	if (pulse_us < min_pulse / 1000 || pulse_us > max_pulse / 1000) {
-		shell_error(sh, "pulse width between %d & %d please", min_pulse / 1000, max_pulse / 1000);
+	if (pulse > 100) {
+		shell_error(sh, "pulse width between %d & %d please", 0, 100);
 		return -EINVAL;
 	}
-	shell_print(sh, "Set servo pulse %dus", pulse_us);
-	int ret = pwm_set_pulse_dt(&servo, PWM_USEC(pulse_us));
-	if (ret < 0) {
+	shell_print(sh, "Set servo pulse %u", pulse);
+	int ret = servo_write(servo, (uint8_t)pulse);
+	if (ret) {
 		printk("Error %d: failed to set pulse width\n", ret);
 	}
 	return ret;
