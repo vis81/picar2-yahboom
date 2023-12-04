@@ -105,32 +105,6 @@
 	status = "okay";
 };
 
-&timers3 {
-	st,prescaler = <1000>;
-	status = "okay";
-
-	pwm1: pwm {
-		status = "disabled";
-		pinctrl-0 = <&tim3_ch1_pwm_out_pa6>;
-		pinctrl-names = "default";
-		gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>;
-	};
-
-	pwm_sw_t3: pwm {
-		compatible = "st,stm32-pwm-sw";
-		status = "okay";
-		gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>,
-				<&gpioc 2 GPIO_ACTIVE_HIGH>,
-				<&gpioc 1 GPIO_ACTIVE_HIGH>,
-				<&gpioc 0 GPIO_ACTIVE_HIGH>;
-		channels = <1 2 3 4>;
-	};
-};
-
-&dma1 {
-	status = "disabled";
-};
-
 &rtc {
 	clocks = <&rcc STM32_CLOCK_BUS_APB1 0x10000000>,
 		 <&rcc STM32_SRC_LSI RTC_SEL(2)>;
