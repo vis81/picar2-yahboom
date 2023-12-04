@@ -5,4 +5,5 @@ menu "Drivers"
 rsource "sensor/Kconfig"
 rsource "pwm/Kconfig"
 rsource "rc/Kconfig"
+rsource "pwm_servo/Kconfig"
 endmenu

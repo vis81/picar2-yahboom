@@ -4,3 +4,4 @@
 add_subdirectory_ifdef(CONFIG_PWM pwm)
 add_subdirectory_ifdef(CONFIG_RC rc)
 add_subdirectory_ifdef(CONFIG_SENSOR sensor)
+add_subdirectory_ifdef(CONFIG_PWM_SERVO pwm_servo)

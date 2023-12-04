@@ -1,0 +1,26 @@
+# Servo implementation that uses NRFX PWM driver
+#
+# Copyright (c) 2021 Daniel Veilleux
+#
+# SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
+#
+
+menuconfig PWM_SERVO
+	bool "Servo implementation that uses Zephyr PWM driver"
+	select PWM
+	help
+	  Enable pwm servo driver
+
+if PWM_SERVO
+
+config PWM_SERVO_INIT_PRIORITY
+	int "Servo init priority"
+	default 90
+	help
+	  Servo initialization priority
+
+module = PWM_SERVO
+module-str = PWM-SERVO
+source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
+
+endif #PWM_SERVO
