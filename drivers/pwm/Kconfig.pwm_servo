@@ -5,9 +5,9 @@
 # SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
 #
 
-menuconfig PWM_SERVO
+config PWM_SERVO
 	bool "Servo implementation that uses Zephyr PWM driver"
-	select PWM
+	default n
 	help
 	  Enable pwm servo driver
 
