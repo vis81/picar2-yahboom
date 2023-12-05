@@ -1,4 +1,6 @@
 /* SPDX-License-Identifier: Apache-2.0 */
+#include <zephyr/dt-bindings/sensor/qdec_stm32.h>
+
 / {
     servo0: nrf-servo0 {
         compatible = "pwm-servo";
@@ -23,6 +25,20 @@
 				<&gpioc 1 GPIO_ACTIVE_HIGH>,
 				<&gpioc 0 GPIO_ACTIVE_HIGH>;
 		channels = <1 2 3 4>;
+	};
+};
+
+&timers2 {
+	st,prescaler = <1000>;
+	status = "okay";
+
+	qdec0: qdec0 {
+		compatible = "st,stm32-qdec";
+		status = "okay";
+		st,counts-per-revolution = <100>;
+		st,input-filter-level = <NO_FILTER>;
+		pinctrl-0 = <&tim2_ch1_remap1_pwm_in_pa15 &tim2_ch2_remap1_pwm_in_pb3>;
+		pinctrl-names = "default";
 	};
 };
 
