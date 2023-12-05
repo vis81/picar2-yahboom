@@ -17,12 +17,9 @@
 	st,prescaler = <1000>;
 	status = "okay";
 
-	qdec: qdec {
-		compatible = "st,stm32-qdec";
+	qdec: qdec_t2_m1 {
 		status = "okay";
 		st,counts-per-revolution = <100>;
 		st,input-filter-level = <NO_FILTER>;
-		pinctrl-0 = <&tim2_ch1_remap1_pwm_in_pa15 &tim2_ch2_remap1_pwm_in_pb3>;
-		pinctrl-names = "default";
 	};
 };
