@@ -80,9 +80,10 @@
 &usart2 {
 	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
 	pinctrl-names = "default";
-	current-speed = <115200>;
+	current-speed = <100000>;
 };
 
+/* FTDI or I2C port */
 &usart3 {
 	/* USB pins */
 	// pinctrl-0 = <&usart3_tx_remap1_pc10 &usart3_rx_remap1_pc11>;
@@ -138,6 +139,11 @@
 		pinctrl-names = "default";
 	};
 
+	pwm_rgb: pwm {
+		status = "disabled";
+		pinctrl-0 = <&tim3_ch2_remap1_pwm_out_pb5>;
+		pinctrl-names = "default";
+	};
 
 	qdec_t3_m4 {
 		compatible = "st,stm32-qdec";
@@ -188,12 +194,40 @@
 	};
 };
 
+/* OLED i2c port*/
 &i2c2 {
 	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
 	pinctrl-names = "default";
 	status = "disabled";
 	// status = "okay"; // disable if occupied by usart3
 	clock-frequency = <I2C_BITRATE_FAST>;
+};
+
+/* ICM20948 MPU*/
+&spi2 {
+	pinctrl-0 = <&spi2_nss_master_pb12 &spi2_sck_master_pb13 &spi2_miso_master_pb14 &spi2_mosi_master_pb15>;
+	pinctrl-names = "default";
+	status = "disabled";
+};
+
+/* on CAN port */
+&i2c1 {
+    /* disable can1 if i2c1 is enabled */
+	pinctrl-0 = <&i2c1_scl_pb8 &i2c1_sda_pb9>;
+	pinctrl-names = "default";
+	clock-frequency = <I2C_BITRATE_FAST>;
+	status = "disabled";
+};
+
+&can1 {
+	/*
+        disable i2c1 if can1 is enabled
+		pb8 i2c1_scl, tim4_ch3_pwm
+		pb9 i2c1_sda, tim4_ch4_pwm
+	*/
+	pinctrl-0 = <&can_rx_remap1_pb8 &can_tx_remap1_pb9>;
+	pinctrl-names = "default";
+	status = "disabled";
 };
 
 &iwdg {
