@@ -250,6 +250,12 @@
 	status = "okay";
 };
 
+&pinctrl {
+	/* needed to enable PA15 for T2 encoder */
+	swj-cfg = "disable";
+};
+
+
 /* for ssd1306_128x32.overlay */
 arduino_i2c: &i2c2 {};
 
