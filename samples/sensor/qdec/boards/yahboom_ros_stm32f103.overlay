@@ -14,12 +14,12 @@
 };
 
 &timers2 {
-	st,prescaler = <1000>;
 	status = "okay";
 
 	qdec: qdec_t2_m1 {
 		status = "okay";
-		st,counts-per-revolution = <100>;
+		/* can be changed to 836 if EncoderMode is set to LL_TIM_ENCODERMODE_X4_TI12 */
+		st,counts-per-revolution = <418>;
 		st,input-filter-level = <NO_FILTER>;
 	};
 };
