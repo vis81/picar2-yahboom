@@ -126,22 +126,23 @@
 
 &timers3 {
 	status = "disabled";
-
+/*
 	pwm_t3_m1_m2_alt: pwm {
 		status = "disabled";
-		pinctrl-0 = <&tim3_ch1_remap2_pwm_out_pc6 &tim3_ch2_remap2_pwm_out_pc7 &tim3_ch3_remap2_pwm_out_pc8 &tim3_ch4_remap2_pwm_out_pc9>;
+		pinctrl-0 = <&tim3_ch1_remap3_pwm_out_pc6 &tim3_ch2_remap3_pwm_out_pc7 &tim3_ch3_remap3_pwm_out_pc8 &tim3_ch4_remap3_pwm_out_pc9>;
 		pinctrl-names = "default";
 	};
-
+*/
+/*
 	pwm_t3_m1_m4_alt: pwm {
 		status = "disabled";
-		pinctrl-0 = <&tim3_ch1_remap2_pwm_out_pc6 &tim3_ch2_remap2_pwm_out_pc7 &tim3_ch3_pwm_out_pb0 &tim3_ch4_pwm_out_pb1>;
+		pinctrl-0 = <&tim3_ch1_remap3_pwm_out_pc6 &tim3_ch2_remap3_pwm_out_pc7 &tim3_ch3_pwm_out_pb0 &tim3_ch4_pwm_out_pb1>;
 		pinctrl-names = "default";
 	};
-
+*/
 	pwm_rgb: pwm {
 		status = "disabled";
-		pinctrl-0 = <&tim3_ch2_remap1_pwm_out_pb5>;
+		pinctrl-0 = <&tim3_ch2_remap2_pwm_out_pb5>;
 		pinctrl-names = "default";
 	};
 
@@ -186,12 +187,13 @@
 		pinctrl-0 = <&tim8_ch1_pwm_out_pc6 &tim8_ch2_pwm_out_pc7 &tim8_ch3_pwm_out_pc8 &tim8_ch4_pwm_out_pc9>;
 		pinctrl-names = "default";
 	};
-
+/*
 	pwm_t8_m4_alt: pwm {
 		status = "disabled";
 		pinctrl-0 = <&tim8_ch2n_pwm_out_pb0 &tim8_ch3n_pwm_out_pb1>;
 		pinctrl-names = "default";
 	};
+*/
 };
 
 /* OLED i2c port*/
