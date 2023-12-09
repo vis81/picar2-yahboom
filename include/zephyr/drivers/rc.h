@@ -12,6 +12,9 @@
 #ifndef ZEPHLY_RC_H
 #define ZEPHLY_RC_H
 
+#define SBUS_FLAGS_FRAME_LOST 0x04
+#define SBUS_FLAGS_FAILSAFE 0x08
+
 struct rc_stats {
 	uint32_t rx_bytes;
 	uint32_t rx_bytes_dropped;
