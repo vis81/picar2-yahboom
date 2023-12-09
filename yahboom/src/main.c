@@ -11,21 +11,28 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/input/sbusreceiver.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/rc.h>
 #include <zephyr/drivers/uart.h>
 #include "zephyr/drivers/pwm_servo.h"
+#include "zephyr/drivers/motor.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
-#include <unistd.h>
+#include <zephyr/input/input.h>
+//#include <unistd.h>
 #include <ctype.h>
 #include <stdlib.h>
 #include <stdio.h>
 
-LOG_MODULE_REGISTER(main, CONFIG_APP_LOG_LEVEL);
+//LOG_MODULE_REGISTER(main, CONFIG_APP_LOG_LEVEL);
+
+#define DEF_KO 1000
 
 #define RC_IN DT_NODELABEL(rc)
 #define SERVO DT_NODELABEL(servo0)
+#define MOTOR_R DT_NODELABEL(motor_r)
+#define MOTOR_L DT_NODELABEL(motor_l)
 
 // Simple functions for mapping a value betwen [0, 100] to the
 // range [min, max] and vice versa.
@@ -34,14 +41,115 @@ LOG_MODULE_REGISTER(main, CONFIG_APP_LOG_LEVEL);
 
 static const struct device *receiver = DEVICE_DT_GET(RC_IN);
 static const struct device *servo = DEVICE_DT_GET(SERVO);
+static const struct device *motor_r = DEVICE_DT_GET(MOTOR_R);
+static const struct device *motor_l = DEVICE_DT_GET(MOTOR_L);
 
 static int rc_debug = 0;
-static int rc_enable = 0;
+static int rc_enable = 1;
+
+
+void process_events() {
+	uint64_t ts;
+	uint16_t chan_val[16];
+	uint8_t flags;
+	uint32_t pulse_width = 0;
+
+	int ret = rc_read_all(receiver, 16, chan_val, &flags, &ts);
+	if (ret)
+		return;
+
+	pulse_width = PAM(chan_val[0],0xF0 , 0x720);	
+	int32_t c1 = chan_val[1] - 0x3e8;
+	uint32_t throttle = PAM(abs(c1), 0, 0x720/2);
+	uint32_t dir;
+	if (flags & SBUS_FLAGS_FRAME_LOST || chan_val[2] > 300)
+		dir = DIR_BREAK;
+	else if (abs(c1) < 0x50)
+		dir = DIR_STOP;
+	else if(chan_val[2] > 300)
+		dir = DIR_BREAK;
+	else if (c1 < 0)
+		dir = DIR_BACKWARD;
+	else
+		dir = DIR_FORWARD;
+	if (rc_debug) {
+		printk("%lld: ", ts);
+		for (int i = 0; i < 16; i++)
+			printk("%04x ", chan_val[i]);
+		printk("%02x, pw %u d %u thr %u\n", flags, pulse_width, dir, throttle);
+
+	}
+	if (rc_enable) {
+		ret = servo_write(servo, pulse_width);
+		if (ret < 0) {
+			printk("Error %d: failed to set pulse width\n", ret);
+		}
+		ret = motor_write(motor_r, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_r\n", ret);
+		}
+		ret = motor_write(motor_l, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_l\n", ret);
+		}
+	}
+}
+
+
+static void callback(struct input_event *evt) {
+	int ret;
+	static uint32_t pulse_width = 50;
+	static uint32_t throttle = 0;
+	static uint32_t dir = DIR_STOP;
+	static uint32_t brake = false;
+
+	switch (evt->code) {
+	case INPUT_ABS_RUDDER:
+		pulse_width = PAM(evt->value, 0xF0, 0x720);
+		break;
+	case INPUT_ABS_GAS:
+		int32_t c1 = evt->value - 0x3e8;
+		throttle = PAM(abs(c1), 0, 0x720/2);
+		if (abs(c1) < 0x50)
+			dir = DIR_STOP;
+		else if (c1 < 0)
+			dir = DIR_BACKWARD;
+		else
+			dir = DIR_FORWARD;
+		break;
+	case INPUT_ABS_BRAKE:
+		brake = evt->value > 300;
+		break;
+	}
+	if (!evt->sync)
+		return;
+
+	if (brake)
+		dir = DIR_BREAK;
+
+	if (rc_debug) {
+		printk("pw %u d %u thr %u brk %u\n", pulse_width, dir, throttle, brake);
+	}
+	if (rc_enable) {
+		ret = servo_write(servo, pulse_width);
+		if (ret < 0) {
+			printk("Error %d: failed to set pulse width\n", ret);
+		}
+		ret = motor_write(motor_r, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_r\n", ret);
+		}
+		ret = motor_write(motor_l, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_l\n", ret);
+		}
+	}
+};
+
+INPUT_CALLBACK_DEFINE( DEVICE_DT_GET(RC_IN), callback);
+
 int main(void)
 {
-	uint32_t pulse_width = 0;
-	int ret;
-
 	printk("Yahboom demo\n");
 
 	if (!device_is_ready(servo)) {
@@ -52,36 +160,148 @@ int main(void)
 		printk("RC IN device not ready.\n");
 		return 1;
 	}
-	
-	while (1)  {
-		uint64_t ts;
-		uint16_t chan_val[16];
-		uint8_t flags;
-        //for (int i = 0; i < 16; i++) 
-		//	rc_read_channel(receiver, i, &chan_val[i], &ts);
-		//rc_read_flags(receiver, &flags, &ts);
-		rc_read_all(receiver, 16, chan_val, &flags, &ts);
-        if (1) {
-			pulse_width = PAM(chan_val[3],0, 0x700);
-			if (rc_debug) {
-				printk("%lld: ", ts);
-				for (int i = 0; i < 16; i++)
-					printk("%04x ", chan_val[i]);
-				printk("%02x, pw %d\n", flags, pulse_width);
 
-			}
-			if (rc_enable) {
-				ret = servo_write(servo, pulse_width);
-				if (ret < 0) {
-					printk("Error %d: failed to set pulse width\n", ret);
-				}
-			}
-        }
+	if (!device_is_ready(motor_r)) {
+		printk("motor_r not ready.\n");
+		return 1;
+	}
+
+	if (!device_is_ready(motor_l)) {
+		printk("motor_l not ready.\n");
+		return 1;
+	}
+	return 0;
+	while (1)  {
+		process_events();
         k_sleep(K_MSEC(50));
     }
 	return 0;
 }
 #ifdef CONFIG_SHELL
+static int cmd_motor_throttle(const struct shell *sh, size_t argc, char **argv)
+{
+	uint32_t dir;
+	uint32_t throttle;
+	char m;
+	int ret;
+
+	if ( (argc != 2 && argc != 4)
+		|| sscanf(argv[1],"%c", &m) != 1
+		|| (m != 'l' && m != 'r')
+		|| (argc == 4 && (sscanf(argv[2],"%u", &dir) != 1  || sscanf(argv[3],"%u", &throttle) != 1))
+		) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	const struct device *motor = (m == 'r' ? motor_r : motor_l);
+	shell_error(sh, "motor %s %s %c", motor->name, argv[1], m);
+	if (argc == 2) {
+		ret = motor_read(motor, (enum motor_dir *)&dir, &throttle);
+		if (!ret)
+			shell_print(sh,"%d %d", dir, throttle);
+	} else
+		ret = motor_write(motor, dir, throttle);
+
+	if (ret)
+		shell_error(sh, "error %d", ret);
+	return ret;
+}
+
+static int cmd_motor_vel(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	int32_t vel;
+	char m;
+	int ret = 0;
+
+	if ( (argc != 2 && argc != 3)
+		|| sscanf(argv[1],"%c", &m) != 1
+		|| (m != 'l' && m != 'r')
+		|| (argc == 3 && (sscanf(argv[2],"%d", &vel) != 1))
+		) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+
+	const struct device *motor = (m == 'r' ? motor_r : motor_l);
+	if (argc == 2) {
+		ret = motor_get_velocity(motor, &vel);
+		if (!ret)
+			shell_print(sh,"%d", vel);
+	} else
+		ret = motor_set_velocity(motor, vel);
+	if (ret)
+		shell_error(sh, "error %d", ret);
+	return ret;
+}
+
+static int cmd_motor_pid(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	float kp, ki, kd;
+	char m;
+
+	if (argc < 5
+		|| sscanf(argv[1],"%c", &m) != 1
+		|| (m != 'l' && m != 'r')
+		|| sscanf(argv[2],"%f", &kp) != 1
+		|| sscanf(argv[3],"%f", &kd) != 1
+		|| sscanf(argv[4],"%f", &ki) != 1) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	const struct device *motor = (m == 'r' ? motor_r : motor_l);
+	int ret = motor_set_pid(motor, kp * DEF_KO, kd * DEF_KO, ki * DEF_KO, DEF_KO);
+	if (ret)
+		shell_error(sh, "error %d", ret);
+	return 0;
+}
+
+static int cmd_motor_pos(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	int32_t pos;
+	char m;
+	int ret;
+
+	if (argc < 2 || sscanf(argv[1],"%c", &m) != 1 || (m != 'l' && m != 'r')) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	const struct device *motor = (m == 'l' ? motor_l : motor_r);
+
+	ret = motor_get_position(motor, &pos);
+	if (ret)
+		shell_error(sh, "error %d", ret);
+	else
+		shell_print(sh,"%d", pos);
+	return ret;
+}
+
+static int cmd_motor_debug(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	char m;
+	int ret;
+	int val;
+
+	if (argc < 3
+		|| sscanf(argv[1],"%c", &m) != 1
+		|| (m != 'l' && m != 'r')
+		|| sscanf(argv[2],"%d", &val) != 1 ) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	const struct device *motor = (m == 'l' ? motor_l : motor_r);
+	struct motor_config cfg;
+	cfg.flags.pid_debug = val;
+	ret = motor_configure(motor, MOTOR_CFG_PID_DEBUG, &cfg);
+	if (ret)
+		shell_error(sh, "error %d", ret);
+	return ret;
+}
+
+
 static int cmd_servo_pulse(const struct shell *sh, size_t argc,
 			      char **argv)
 {
@@ -133,8 +353,8 @@ static int cmd_rc_enable(const struct shell *sh, size_t argc,
 static int cmd_rc_stats(const struct shell *sh, size_t argc,
 			      char **argv)
 {
-	struct rc_stats stats;
-	rc_read_stats(receiver, &stats);
+	struct sbus_stats stats;
+	sbus_read_stats(receiver, &stats);
 	shell_print(sh, "bytes        : %d", stats.rx_bytes);
 	shell_print(sh, "bytes dropped: %d", stats.rx_bytes_dropped);
 	shell_print(sh, "good         : %d", stats.rx_good);
@@ -144,6 +364,15 @@ static int cmd_rc_stats(const struct shell *sh, size_t argc,
 	shell_print(sh, "last_ts      : %lld", stats.last_ts);
 	return 0;
 }
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_motor,
+	SHELL_CMD(throttle, NULL, "l|r dir throttle", cmd_motor_throttle),
+	SHELL_CMD(pos, NULL, "l|r", cmd_motor_pos),
+	SHELL_CMD(vel, NULL, "l|r", cmd_motor_vel),
+	SHELL_CMD(pid, NULL, "l|r", cmd_motor_pid),
+	SHELL_CMD(debug, NULL, "l|r", cmd_motor_debug),
+	SHELL_SUBCMD_SET_END /* Array terminated. */
+);
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_servo,
 	SHELL_CMD(pulse, NULL, "Cammand using getopt in non thread safe way"
@@ -158,6 +387,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_rc,
 	SHELL_SUBCMD_SET_END /* Array terminated. */
 );
 
+SHELL_CMD_REGISTER(motor, &sub_motor, "motor commands", NULL);
 SHELL_CMD_REGISTER(servo, &sub_servo, "servo commands", NULL);
 SHELL_CMD_REGISTER(rc, &sub_rc, "rc commands", NULL);
 #endif
