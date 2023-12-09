@@ -1,0 +1,16 @@
+description: Hbridge driver implementation
+
+compatible: "hbridge"
+
+include: base.yaml
+
+properties:
+  status:
+    required: true
+    type: string
+    description: Human readable string describing the device's status
+
+  pwms:
+    required: true
+    type: phandle-array
+    description: PWM specifier driving the motor.

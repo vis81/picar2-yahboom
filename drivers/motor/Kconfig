@@ -1,0 +1,22 @@
+menuconfig MOTOR
+	bool "Motor drivers"
+	help
+	  Enable config options for motor drivers.
+
+if MOTOR
+
+config MOTOR_HBRIDGE
+	bool "hbridge motor driver"
+	default n
+	depends on PWM
+	help
+	  This option enables the HBridge motor driver
+
+config MOTOR_HBRIDGE_INIT_PRIORITY
+	int "Hbridge init priority"
+	default 90
+	help
+	  Servo initialization priority
+
+endif # MOTOR
+
