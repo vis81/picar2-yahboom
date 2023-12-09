@@ -15,6 +15,7 @@
 #include <zephyr/drivers/rc.h>
 #include <zephyr/drivers/uart.h>
 #include "zephyr/drivers/pwm_servo.h"
+#include "zephyr/drivers/motor.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <unistd.h>
@@ -22,10 +23,12 @@
 #include <stdlib.h>
 #include <stdio.h>
 
-LOG_MODULE_REGISTER(main, CONFIG_APP_LOG_LEVEL);
+//LOG_MODULE_REGISTER(main, CONFIG_APP_LOG_LEVEL);
 
 #define RC_IN DT_NODELABEL(rc)
 #define SERVO DT_NODELABEL(servo0)
+#define MOTOR_R DT_NODELABEL(motor_r)
+#define MOTOR_L DT_NODELABEL(motor_l)
 
 // Simple functions for mapping a value betwen [0, 100] to the
 // range [min, max] and vice versa.
@@ -34,9 +37,11 @@ LOG_MODULE_REGISTER(main, CONFIG_APP_LOG_LEVEL);
 
 static const struct device *receiver = DEVICE_DT_GET(RC_IN);
 static const struct device *servo = DEVICE_DT_GET(SERVO);
+static const struct device *motor_r = DEVICE_DT_GET(MOTOR_R);
+static const struct device *motor_l = DEVICE_DT_GET(MOTOR_L);
 
 static int rc_debug = 0;
-static int rc_enable = 0;
+static int rc_enable = 1;
 int main(void)
 {
 	uint32_t pulse_width = 0;
@@ -52,7 +57,17 @@ int main(void)
 		printk("RC IN device not ready.\n");
 		return 1;
 	}
-	
+
+	if (!device_is_ready(motor_r)) {
+		printk("motor_r not ready.\n");
+		return 1;
+	}
+
+	if (!device_is_ready(motor_l)) {
+		printk("motor_l not ready.\n");
+		return 1;
+	}
+
 	while (1)  {
 		uint64_t ts;
 		uint16_t chan_val[16];
@@ -60,14 +75,28 @@ int main(void)
         //for (int i = 0; i < 16; i++) 
 		//	rc_read_channel(receiver, i, &chan_val[i], &ts);
 		//rc_read_flags(receiver, &flags, &ts);
-		rc_read_all(receiver, 16, chan_val, &flags, &ts);
-        if (1) {
-			pulse_width = PAM(chan_val[3],0, 0x700);
+		ret = rc_read_all(receiver, 16, chan_val, &flags, &ts);
+        if (!ret) {
+			pulse_width = PAM(chan_val[0],0xF0 , 0x720);
+			
+			int32_t c1 = chan_val[1] - 0x3e8;
+			uint32_t throttle = PAM(abs(c1), 0, 0x720/2);
+			uint32_t dir;
+			if (flags & SBUS_FLAGS_FRAME_LOST || chan_val[2] > 300)
+				dir = DIR_BREAK;
+			else if (abs(c1) < 0x50)
+				dir = DIR_STOP;
+			else if(chan_val[2] > 300)
+				dir = DIR_BREAK;
+			else if (c1 < 0)
+				dir = DIR_BACKWARD;
+			else
+				dir = DIR_FORWARD;
 			if (rc_debug) {
 				printk("%lld: ", ts);
 				for (int i = 0; i < 16; i++)
 					printk("%04x ", chan_val[i]);
-				printk("%02x, pw %d\n", flags, pulse_width);
+				printk("%02x, pw %u d %u thr %u\n", flags, pulse_width, dir, throttle);
 
 			}
 			if (rc_enable) {
@@ -75,6 +104,15 @@ int main(void)
 				if (ret < 0) {
 					printk("Error %d: failed to set pulse width\n", ret);
 				}
+				ret = motor_write(motor_r, dir, throttle);
+				if (ret < 0) {
+					printk("Error %d: failed to set motor_r\n", ret);
+				}
+				ret = motor_write(motor_l, dir, throttle);
+				if (ret < 0) {
+					printk("Error %d: failed to set motor_l\n", ret);
+				}
+
 			}
         }
         k_sleep(K_MSEC(50));
@@ -82,6 +120,37 @@ int main(void)
 	return 0;
 }
 #ifdef CONFIG_SHELL
+static int cmd_motor_set(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	uint32_t dir, throttle;
+	char m;
+	int ret;
+
+	if (argc == 1) {
+		return 0;
+	}
+	if (argc < 4)
+		return -EINVAL;
+
+	if (sscanf(argv[1],"%c", &m) != 1 || sscanf(argv[2],"%u", &dir) != 1 || sscanf(argv[3],"%u", &throttle) != 1) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	if (m != 'l' && m != 'r') {
+		shell_help(sh);
+		return -EINVAL;
+	}
+
+	const struct device *motor = (m == 'l' ? motor_l : motor_r);
+
+	ret = motor_write(motor, dir, throttle);
+	if (ret) {
+		printk("Error %d: failed to set motor\n", ret);
+	}
+	return ret;
+}
+
 static int cmd_servo_pulse(const struct shell *sh, size_t argc,
 			      char **argv)
 {
@@ -145,6 +214,11 @@ static int cmd_rc_stats(const struct shell *sh, size_t argc,
 	return 0;
 }
 
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_motor,
+	SHELL_CMD(set, NULL, "dir throttle", cmd_motor_set),
+	SHELL_SUBCMD_SET_END /* Array terminated. */
+);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_servo,
 	SHELL_CMD(pulse, NULL, "Cammand using getopt in non thread safe way"
 	  " looking for: \"abhc:\".\n", cmd_servo_pulse),
@@ -158,6 +232,7 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_rc,
 	SHELL_SUBCMD_SET_END /* Array terminated. */
 );
 
+SHELL_CMD_REGISTER(motor, &sub_motor, "motor commands", NULL);
 SHELL_CMD_REGISTER(servo, &sub_servo, "servo commands", NULL);
 SHELL_CMD_REGISTER(rc, &sub_rc, "rc commands", NULL);
 #endif
