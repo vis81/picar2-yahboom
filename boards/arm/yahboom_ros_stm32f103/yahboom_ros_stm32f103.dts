@@ -126,9 +126,10 @@
 
 &timers3 {
 	status = "disabled";
+
+/* M1 and M2 pwm out */
 /*
 	pwm_t3_m1_m2_alt: pwm {
-        /* M1 and M2 pwm out */
 		status = "disabled";
 		pinctrl-0 = <&tim3_ch1_remap3_pwm_out_pc6 &tim3_ch2_remap3_pwm_out_pc7 &tim3_ch3_remap3_pwm_out_pc8 &tim3_ch4_remap3_pwm_out_pc9>;
 		pinctrl-names = "default";
@@ -137,7 +138,7 @@
 	pwm_t3_rgb_m4: pwm {
         /* RGB pwm out + M4 pwm out */
 		status = "disabled";
-		pinctrl-0 = <&tim3_ch2_remap2_pwm_out_pb5, &tim3_ch3_pwm_out_pb0 &tim3_ch4_pwm_out_pb1>;
+		pinctrl-0 = <&tim3_ch2_remap2_pwm_out_pb5 &tim3_ch3_pwm_out_pb0 &tim3_ch4_pwm_out_pb1>;
 		pinctrl-names = "default";
 	};
 
