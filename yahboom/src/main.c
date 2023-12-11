@@ -11,6 +11,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/device.h>
+#include <zephyr/drivers/input/sbusreceiver.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/rc.h>
 #include <zephyr/drivers/uart.h>
@@ -18,6 +19,7 @@
 #include "zephyr/drivers/motor.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
+#include <zephyr/input/input.h>
 #include <unistd.h>
 #include <ctype.h>
 #include <stdlib.h>
@@ -42,11 +44,110 @@ static const struct device *motor_l = DEVICE_DT_GET(MOTOR_L);
 
 static int rc_debug = 0;
 static int rc_enable = 1;
+
+
+void process_events() {
+	uint64_t ts;
+	uint16_t chan_val[16];
+	uint8_t flags;
+	uint32_t pulse_width = 0;
+
+	int ret = rc_read_all(receiver, 16, chan_val, &flags, &ts);
+	if (ret)
+		return;
+
+	pulse_width = PAM(chan_val[0],0xF0 , 0x720);	
+	int32_t c1 = chan_val[1] - 0x3e8;
+	uint32_t throttle = PAM(abs(c1), 0, 0x720/2);
+	uint32_t dir;
+	if (flags & SBUS_FLAGS_FRAME_LOST || chan_val[2] > 300)
+		dir = DIR_BREAK;
+	else if (abs(c1) < 0x50)
+		dir = DIR_STOP;
+	else if(chan_val[2] > 300)
+		dir = DIR_BREAK;
+	else if (c1 < 0)
+		dir = DIR_BACKWARD;
+	else
+		dir = DIR_FORWARD;
+	if (rc_debug) {
+		printk("%lld: ", ts);
+		for (int i = 0; i < 16; i++)
+			printk("%04x ", chan_val[i]);
+		printk("%02x, pw %u d %u thr %u\n", flags, pulse_width, dir, throttle);
+
+	}
+	if (rc_enable) {
+		ret = servo_write(servo, pulse_width);
+		if (ret < 0) {
+			printk("Error %d: failed to set pulse width\n", ret);
+		}
+		ret = motor_write(motor_r, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_r\n", ret);
+		}
+		ret = motor_write(motor_l, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_l\n", ret);
+		}
+	}
+}
+
+
+static void callback(struct input_event *evt) {
+	int ret;
+	static uint32_t pulse_width = 50;
+	static uint32_t throttle = 0;
+	static uint32_t dir = DIR_STOP;
+	static uint32_t brake = false;
+
+	switch (evt->code) {
+	case INPUT_ABS_RUDDER:
+		pulse_width = PAM(evt->value, 0xF0, 0x720);
+		break;
+	case INPUT_ABS_GAS:
+		int32_t c1 = evt->value - 0x3e8;
+		throttle = PAM(abs(c1), 0, 0x720/2);
+		if (abs(c1) < 0x50)
+			dir = DIR_STOP;
+		else if (c1 < 0)
+			dir = DIR_BACKWARD;
+		else
+			dir = DIR_FORWARD;
+		break;
+	case INPUT_ABS_BRAKE:
+		brake = evt->value > 300;
+		break;
+	}
+	if (!evt->sync)
+		return;
+
+	if (brake)
+		dir = DIR_BREAK;
+
+	if (rc_debug) {
+		printk("pw %u d %u thr %u brk %u\n", pulse_width, dir, throttle, brake);
+	}
+	if (rc_enable) {
+		ret = servo_write(servo, pulse_width);
+		if (ret < 0) {
+			printk("Error %d: failed to set pulse width\n", ret);
+		}
+		ret = motor_write(motor_r, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_r\n", ret);
+		}
+		ret = motor_write(motor_l, dir, throttle);
+		if (ret < 0) {
+			printk("Error %d: failed to set motor_l\n", ret);
+		}
+	}
+};
+
+INPUT_CALLBACK_DEFINE( DEVICE_DT_GET(RC_IN), callback);
+
 int main(void)
 {
-	uint32_t pulse_width = 0;
-	int ret;
-
 	printk("Yahboom demo\n");
 
 	if (!device_is_ready(servo)) {
@@ -67,54 +168,9 @@ int main(void)
 		printk("motor_l not ready.\n");
 		return 1;
 	}
-
+	return 0;
 	while (1)  {
-		uint64_t ts;
-		uint16_t chan_val[16];
-		uint8_t flags;
-        //for (int i = 0; i < 16; i++) 
-		//	rc_read_channel(receiver, i, &chan_val[i], &ts);
-		//rc_read_flags(receiver, &flags, &ts);
-		ret = rc_read_all(receiver, 16, chan_val, &flags, &ts);
-        if (!ret) {
-			pulse_width = PAM(chan_val[0],0xF0 , 0x720);
-			
-			int32_t c1 = chan_val[1] - 0x3e8;
-			uint32_t throttle = PAM(abs(c1), 0, 0x720/2);
-			uint32_t dir;
-			if (flags & SBUS_FLAGS_FRAME_LOST || chan_val[2] > 300)
-				dir = DIR_BREAK;
-			else if (abs(c1) < 0x50)
-				dir = DIR_STOP;
-			else if(chan_val[2] > 300)
-				dir = DIR_BREAK;
-			else if (c1 < 0)
-				dir = DIR_BACKWARD;
-			else
-				dir = DIR_FORWARD;
-			if (rc_debug) {
-				printk("%lld: ", ts);
-				for (int i = 0; i < 16; i++)
-					printk("%04x ", chan_val[i]);
-				printk("%02x, pw %u d %u thr %u\n", flags, pulse_width, dir, throttle);
-
-			}
-			if (rc_enable) {
-				ret = servo_write(servo, pulse_width);
-				if (ret < 0) {
-					printk("Error %d: failed to set pulse width\n", ret);
-				}
-				ret = motor_write(motor_r, dir, throttle);
-				if (ret < 0) {
-					printk("Error %d: failed to set motor_r\n", ret);
-				}
-				ret = motor_write(motor_l, dir, throttle);
-				if (ret < 0) {
-					printk("Error %d: failed to set motor_l\n", ret);
-				}
-
-			}
-        }
+		process_events();
         k_sleep(K_MSEC(50));
     }
 	return 0;
@@ -202,8 +258,8 @@ static int cmd_rc_enable(const struct shell *sh, size_t argc,
 static int cmd_rc_stats(const struct shell *sh, size_t argc,
 			      char **argv)
 {
-	struct rc_stats stats;
-	rc_read_stats(receiver, &stats);
+	struct sbus_stats stats;
+	sbus_read_stats(receiver, &stats);
 	shell_print(sh, "bytes        : %d", stats.rx_bytes);
 	shell_print(sh, "bytes dropped: %d", stats.rx_bytes_dropped);
 	shell_print(sh, "good         : %d", stats.rx_good);
