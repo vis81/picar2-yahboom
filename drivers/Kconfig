@@ -6,4 +6,5 @@ rsource "sensor/Kconfig"
 rsource "pwm/Kconfig"
 rsource "rc/Kconfig"
 rsource "motor/Kconfig"
+rsource "input/Kconfig"
 endmenu
