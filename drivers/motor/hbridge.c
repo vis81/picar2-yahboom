@@ -12,6 +12,7 @@
 #include <zephyr/drivers/motor.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
+#include <zephyr/input/input.h>
 
 LOG_MODULE_REGISTER(hbridge, CONFIG_MOTOR_LOG_LEVEL);
 
@@ -26,6 +27,9 @@ LOG_MODULE_REGISTER(hbridge, CONFIG_MOTOR_LOG_LEVEL);
 #define PWM_CNT 2
 
 struct hbridge_data {
+	const struct device *dev;
+	int32_t last_pos;
+    int32_t last_vel;
 	uint8_t current_throttle;
 	enum motor_dir current_dir;
 	bool ready;
@@ -33,6 +37,9 @@ struct hbridge_data {
 
 struct hbridge_cfg {
     struct pwm_dt_spec pwm_spec[PWM_CNT];
+    const struct device *const qdec_dev;
+    uint32_t period_us;
+    uint32_t counts_per_rev;
 };
 
 static inline int channel_get(const struct device *dev,
@@ -111,7 +118,7 @@ static int hbridge_write(const struct device *dev, enum motor_dir dir, uint32_t 
     return err;
 }
 
-static int hbridge_read(const struct device *dev, uint8_t *value)
+static int hbridge_read(const struct device *dev, enum motor_dir *dir, uint32_t *throttle)
 {
 	struct hbridge_data      *p_data = dev->data;
 
@@ -119,12 +126,50 @@ static int hbridge_read(const struct device *dev, uint8_t *value)
         LOG_WRN("Device is not initialized yet");
         return -EBUSY;
     }
-
-    int err = channel_get(dev, value);
-    if (0 != err) {
-    	return err;
-    }
+	*throttle = p_data->current_throttle;
+	*dir = p_data->current_dir;
     return 0;
+}
+
+static int hbridge_get_pos(const struct device *dev, int32_t *pos)
+{
+	struct hbridge_data      *p_data = dev->data;
+	const struct hbridge_cfg *p_cfg  = dev->config;
+	//int rc;
+	
+	if (!p_cfg->qdec_dev)
+		return -ENOTSUP;
+
+    if (unlikely(!p_data->ready)) {
+        LOG_WRN("Device is not initialized yet");
+        return -EBUSY;
+    }
+    *pos = p_data->last_pos * 360 / (int32_t) p_cfg->counts_per_rev;
+    return 0;
+}
+
+static int hbridge_get_velocity(const struct device *dev, int32_t *vel)
+{
+	struct hbridge_data      *p_data = dev->data;
+	const struct hbridge_cfg *p_cfg  = dev->config;
+	
+	if (!p_cfg->qdec_dev)
+		return -ENOTSUP;
+
+    if (unlikely(!p_data->ready)) {
+        LOG_WRN("Device is not initialized yet");
+        return -EBUSY;
+    }
+	*vel = p_data->last_vel * 360 / (int32_t) p_cfg->counts_per_rev;
+    return 0;
+}
+
+static void hbridge_input_cb(const struct device *dev, struct input_event *evt)
+{
+	struct hbridge_data      *p_data = dev->data;
+	const struct hbridge_cfg *p_cfg  = dev->config;
+	p_data->last_vel = evt->value * 1000000 / (int32_t)(p_cfg->period_us);
+	p_data->last_pos += evt->value;
 }
 
 static int hbridge_init(const struct device *dev)
@@ -154,6 +199,7 @@ static int hbridge_init(const struct device *dev)
     	goto ERR_EXIT;
     }
 
+	p_data->dev = dev;
     p_data->ready = true;
 	LOG_INF("hbridge_init done\n");
     return 0;
@@ -164,14 +210,29 @@ ERR_EXIT:
 
 static const struct motor_driver_api motor_driver_api = {
     .write = hbridge_write,
+    .read = hbridge_read,
+    .get_pos = hbridge_get_pos,
+    .get_velocity = hbridge_get_velocity,
 };
 
 #define INST(num) DT_INST(num, hbridge)
+#define DT_QDEC_DEV(n)  DEVICE_DT_GET(DT_INST_PROP(n, qdec_dev))
+
+#define INPUT_CALLBACK_FUNC(index) \
+static void hbridge_input_cb_##index(struct input_event *evt)	\
+{										\
+	hbridge_input_cb(DEVICE_DT_GET(INST(index)), evt); \
+}
 
 #define HBRIDGE_DEVICE(n) \
+	IF_ENABLED(DT_INST_NODE_HAS_PROP(n, qdec_dev), (INPUT_CALLBACK_FUNC(n)) ); \
+	IF_ENABLED(DT_INST_NODE_HAS_PROP(n, qdec_dev), (INPUT_CALLBACK_DEFINE(DT_QDEC_DEV(n), hbridge_input_cb_##n))); \
     static const struct hbridge_cfg hbridge_cfg_##n = { \
         .pwm_spec     = { PWM_DT_SPEC_GET_BY_IDX(INST(n), 0), \
-						  PWM_DT_SPEC_GET_BY_IDX(INST(n), 1) } \
+						  PWM_DT_SPEC_GET_BY_IDX(INST(n), 1) }, \
+		IF_ENABLED(DT_INST_NODE_HAS_PROP(n, qdec_dev), (.qdec_dev = DT_QDEC_DEV(n),)) \
+		IF_ENABLED(DT_INST_NODE_HAS_PROP(n, qdec_dev), (.period_us = DT_PROP(DT_INST_PROP(n, qdec_dev), sample_time_us),)) \
+		IF_ENABLED(DT_INST_NODE_HAS_PROP(n, counts_per_rev), (.counts_per_rev = DT_INST_PROP(n, counts_per_rev),)) \
     }; \
     static struct hbridge_data hbridge_data_##n; \
     DEVICE_DT_DEFINE(INST(n), \

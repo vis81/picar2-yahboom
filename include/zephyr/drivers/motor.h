@@ -31,6 +31,9 @@ enum motor_dir {
 
 struct motor_driver_api {
 	int (*write)(const struct device *dev, enum motor_dir dir, uint32_t throttle);
+	int (*read)(const struct device *dev, enum motor_dir *dir, uint32_t *throttle);
+	int (*get_velocity)(const struct device *dev, int32_t *speed);
+	int (*get_pos)(const struct device *dev, int32_t *pos);
 };
 
 static inline int motor_write(const struct device *dev, enum motor_dir dir, uint32_t throttle) {
@@ -38,6 +41,28 @@ static inline int motor_write(const struct device *dev, enum motor_dir dir, uint
     if (api->write)
 		return api->write(dev, dir, throttle);
 	return -ENOTSUP;
-}
+};
+
+static inline int motor_read(const struct device *dev, enum motor_dir *dir, uint32_t *throttle) {
+    const struct motor_driver_api *api = (struct motor_driver_api*)dev->api;
+    if (api->read)
+		return api->read(dev, dir, throttle);
+	return -ENOTSUP;
+};
+
+static inline int motor_get_velocity(const struct device *dev, int32_t *vel) {
+    const struct motor_driver_api *api = (struct motor_driver_api*)dev->api;
+    if (api->get_velocity)
+		return api->get_velocity(dev, vel);
+	return -ENOTSUP;
+};
+
+static inline int motor_get_position(const struct device *dev, int32_t *pos) {
+    const struct motor_driver_api *api = (struct motor_driver_api*)dev->api;
+    if (api->get_pos)
+		return api->get_pos(dev, pos);
+	return -ENOTSUP;
+};
+
 
 #endif // ZEPHYR_MOTOR_H

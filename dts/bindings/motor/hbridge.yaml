@@ -14,3 +14,11 @@ properties:
     required: true
     type: phandle-array
     description: PWM specifier driving the motor.
+
+  qdec-dev:
+    type: phandle
+    required: false
+
+  counts-per-rev:
+    type: int
+    required: false
