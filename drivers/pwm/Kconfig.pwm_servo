@@ -19,8 +19,4 @@ config PWM_SERVO_INIT_PRIORITY
 	help
 	  Servo initialization priority
 
-module = PWM_SERVO
-module-str = PWM-SERVO
-source "${ZEPHYR_BASE}/subsys/logging/Kconfig.template.log_config"
-
 endif #PWM_SERVO

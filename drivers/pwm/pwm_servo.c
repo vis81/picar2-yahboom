@@ -14,7 +14,7 @@
 
 #include <zephyr/logging/log.h>
 
-LOG_MODULE_REGISTER(pwm_servo, CONFIG_PWM_SERVO_LOG_LEVEL);
+LOG_MODULE_REGISTER(pwm_servo, CONFIG_PWM_LOG_LEVEL);
 
 // Simple functions for mapping a value betwen [0, 100] to the
 // range [min, max] and vice versa.
