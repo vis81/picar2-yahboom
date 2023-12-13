@@ -4,5 +4,6 @@
 if INPUT
 
 rsource "Kconfig.sbus_receiver"
+rsource "Kconfig.stm32_qdec"
 
 endif # INPUT
