@@ -14,6 +14,8 @@
 
 	motor_r: motor_r {
         compatible = "hbridge";
+        qdec-dev = < &qdec_r >;
+        counts-per-rev = <824>;
         pwms = <&pwm_t8_m1_m2 1 PWM_MSEC(1) PWM_POLARITY_NORMAL>,
 				<&pwm_t8_m1_m2 2 PWM_MSEC(1) PWM_POLARITY_NORMAL>;
         status = "okay";
@@ -21,6 +23,8 @@
 
 	motor_l: motor_l {
         compatible = "hbridge";
+        qdec-dev = < &qdec_l >;
+        counts-per-rev = <824>;
         pwms = <&pwm_t8_m1_m2 4 PWM_MSEC(1) PWM_POLARITY_NORMAL>,
 				<&pwm_t8_m1_m2 3 PWM_MSEC(1) PWM_POLARITY_NORMAL>;
         status = "okay";
@@ -32,10 +36,14 @@
 	st,prescaler = <1000>;
 	status = "okay";
 
-	qdec1: qdec_t2_m1 {
+	qdec_r: qdec_r {
 		status = "okay";
-		st,counts-per-revolution = <418>;
+		compatible="st,stm32-input-qdec";
+		pinctrl-0 = <&tim2_ch1_remap1_pwm_in_pa15 &tim2_ch2_remap1_pwm_in_pb3>;
+		pinctrl-names = "default";
 		st,input-filter-level = <NO_FILTER>;
+		sample-time-us = <50000>;
+		zephyr,axis = <INPUT_REL_WHEEL>;
 	};
 };
 
@@ -53,6 +61,21 @@
 				<&gpioc 0 GPIO_ACTIVE_HIGH>;
 		channels = <1 2 3 4>;
 		#pwm-cells = <3>;
+	};
+};
+
+&timers4 {
+	st,prescaler = <1000>;
+	status = "okay";
+
+	qdec_l: qdec_l {
+		status = "okay";
+		compatible="st,stm32-input-qdec";
+		pinctrl-0 = <&tim2_ch1_remap1_pwm_in_pa15 &tim2_ch2_remap1_pwm_in_pb3>;
+		pinctrl-names = "default";
+		st,input-filter-level = <NO_FILTER>;
+		sample-time-us = <50000>;
+		zephyr,axis = <INPUT_REL_WHEEL>;
 	};
 };
 

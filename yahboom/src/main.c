@@ -207,6 +207,70 @@ static int cmd_motor_set(const struct shell *sh, size_t argc,
 	return ret;
 }
 
+static int cmd_motor_get(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	uint32_t throttle;
+	enum motor_dir dir;
+	char m;
+	int ret;
+
+	if (argc < 2 || sscanf(argv[1],"%c", &m) != 1 || (m != 'l' && m != 'r')) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	const struct device *motor = (m == 'l' ? motor_l : motor_r);
+
+	ret = motor_read(motor, &dir, &throttle);
+	if (ret) {
+		shell_print(sh, "Error %d: failed to set motor\n", ret);
+	}
+	shell_print(sh,"%d %d", dir, throttle);
+	return ret;
+}
+
+static int cmd_motor_get_pos(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	int32_t pos;
+	char m;
+	int ret;
+
+	if (argc < 2 || sscanf(argv[1],"%c", &m) != 1 || (m != 'l' && m != 'r')) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	const struct device *motor = (m == 'l' ? motor_l : motor_r);
+
+	ret = motor_get_position(motor, &pos);
+	if (ret) {
+		shell_print(sh, "Error %d: failed to get pos\n", ret);
+	}
+	shell_print(sh,"%d", pos);
+	return ret;
+}
+
+static int cmd_motor_get_vel(const struct shell *sh, size_t argc,
+			      char **argv)
+{
+	int32_t vel;
+	char m;
+	int ret;
+
+	if (argc < 2 || sscanf(argv[1],"%c", &m) != 1 || (m != 'l' && m != 'r')) {
+		shell_help(sh);
+		return -EINVAL;
+	}
+	const struct device *motor = (m == 'l' ? motor_l : motor_r);
+
+	ret = motor_get_velocity(motor, &vel);
+	if (ret) {
+		shell_print(sh, "Error %d: failed to get pos\n", ret);
+	}
+	shell_print(sh,"%d", vel);
+	return ret;
+}
+
 static int cmd_servo_pulse(const struct shell *sh, size_t argc,
 			      char **argv)
 {
@@ -271,7 +335,10 @@ static int cmd_rc_stats(const struct shell *sh, size_t argc,
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_motor,
-	SHELL_CMD(set, NULL, "dir throttle", cmd_motor_set),
+	SHELL_CMD(set, NULL, "l|r dir throttle", cmd_motor_set),
+	SHELL_CMD(get, NULL, "l|r", cmd_motor_get),
+	SHELL_CMD(get_pos, NULL, "l|r", cmd_motor_get_pos),
+	SHELL_CMD(get_vel, NULL, "l|r", cmd_motor_get_vel),
 	SHELL_SUBCMD_SET_END /* Array terminated. */
 );
 
