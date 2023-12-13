@@ -1,0 +1,58 @@
+/* SPDX-License-Identifier: Apache-2.0 */
+#include <zephyr/dt-bindings/sensor/qdec_stm32.h>
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
+&timers2 {
+	st,prescaler = <1000>;
+	status = "okay";
+
+	qdec_r {
+		status = "okay";
+		compatible="st,stm32-input-qdec";
+		pinctrl-0 = <&tim2_ch1_remap1_pwm_in_pa15 &tim2_ch2_remap1_pwm_in_pb3>;
+		pinctrl-names = "default";
+		st,input-filter-level = <NO_FILTER>;
+		sample-time-us = <50000>;
+		zephyr,axis = <INPUT_REL_WHEEL>;
+	};
+};
+
+&timers4 {
+	st,prescaler = <1000>;
+	status = "okay";
+
+	qdec_l {
+		status = "okay";
+		compatible="st,stm32-input-qdec";
+		pinctrl-0 = <&tim2_ch1_remap1_pwm_in_pa15 &tim2_ch2_remap1_pwm_in_pb3>;
+		pinctrl-names = "default";
+		st,input-filter-level = <NO_FILTER>;
+		sample-time-us = <50000>;
+		zephyr,axis = <INPUT_REL_WHEEL>;
+	};
+};
+
+&usart2 {
+	current-speed = <100000>;
+	parity = "even";
+	stop-bits = "2";
+	data-bits = <8>;
+	status = "okay";
+    rc: sbus {
+        compatible = "sbus-receiver";
+        label = "sbus0";
+        status = "okay";
+        ch_1 {
+            channel = <1>;
+            zephyr,axis = <INPUT_ABS_RUDDER>;
+        };
+        ch_2 {
+            channel = <2>;
+            zephyr,axis = <INPUT_ABS_GAS>;
+        };
+        ch_3 {
+            channel = <3>;
+            zephyr,axis = <INPUT_ABS_BRAKE>;
+        };
+    };
+};
