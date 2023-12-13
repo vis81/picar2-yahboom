@@ -3,3 +3,4 @@
 
 zephyr_library()
 zephyr_library_sources_ifdef(CONFIG_INPUT_SBUS_RECEIVER sbus_receiver.c)
+zephyr_library_sources_ifdef(CONFIG_INPUT_STM32_QDEC input_stm32_qdec.c)
