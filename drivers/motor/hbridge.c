@@ -13,7 +13,7 @@
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/logging/log.h>
 
-//LOG_MODULE_REGISTER(hbridge, CONFIG_MOTOR_HBRIDGE_LOG_LEVEL);
+LOG_MODULE_REGISTER(hbridge, CONFIG_MOTOR_LOG_LEVEL);
 
 #define MAX_THROTTLE 100
 // Simple functions for mapping a value betwen [0, 100] to the
@@ -116,7 +116,7 @@ static int hbridge_read(const struct device *dev, uint8_t *value)
 	struct hbridge_data      *p_data = dev->data;
 
     if (unlikely(!p_data->ready)) {
-        //LOG_WRN("Device is not initialized yet");
+        LOG_WRN("Device is not initialized yet");
         return -EBUSY;
     }
 
@@ -155,7 +155,7 @@ static int hbridge_init(const struct device *dev)
     }
 
     p_data->ready = true;
-	printk("hbridge_init done\n");
+	LOG_INF("hbridge_init done\n");
     return 0;
 
 ERR_EXIT:

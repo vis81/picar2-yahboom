@@ -5,6 +5,10 @@ menuconfig MOTOR
 
 if MOTOR
 
+module = MOTOR
+module-str = motor
+source "subsys/logging/Kconfig.template.log_config"
+
 config MOTOR_HBRIDGE
 	bool "hbridge motor driver"
 	default n
