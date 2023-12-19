@@ -8,6 +8,7 @@
 
 #define DT_DRV_COMPAT st_stm32_pwm_sw
 #include <errno.h>
+#include <stdlib.h>
 
 #include <soc.h>
 #include <stm32_ll_rcc.h>
@@ -44,11 +45,7 @@ LOG_MODULE_REGISTER(pwm_stm32_sw, CONFIG_PWM_LOG_LEVEL);
 #define ARR_INIT(n, attr) \
 	LISTIFY(ARR_LEN(n, attr), ARR_ELEM, (,), n, attr)
 
-#if ARR_LEN(0, gpios) != ARR_LEN(0, channels)
-#error "gpios and channels array sizes must be the same"
-#endif
-
-#define NUM_GPIOS ARR_LEN(0, gpios)
+#define MAX_GPIOS 4
 
 /** PWM data. */
 struct pwm_stm32_data {
@@ -56,7 +53,7 @@ struct pwm_stm32_data {
 	uint32_t tim_clk;
 	/* Reset controller device configuration */
 	const struct reset_dt_spec reset;
-    uint32_t pulse_cycles[NUM_GPIOS];
+    uint32_t pulse_cycles[MAX_GPIOS];
 };
 
 /** PWM configuration. */
@@ -65,8 +62,9 @@ struct pwm_stm32_config {
 	uint32_t prescaler;
 	uint32_t countermode;
 	struct stm32_pclken pclken;
-    struct gpio_dt_spec sw_gpio[NUM_GPIOS];
-    uint32_t channels[NUM_GPIOS];
+    struct gpio_dt_spec sw_gpio[MAX_GPIOS];
+    uint32_t channels[MAX_GPIOS];
+    uint32_t num_gpios;
 	void (*irq_config_func)(const struct device *dev);
 };
 
@@ -113,8 +111,7 @@ static void (*const set_timer_compare[TIMER_MAX_CH])(TIM_TypeDef *,
 };
 
 /** Channel to capture get function mapping. */
-#if !defined(CONFIG_SOC_SERIES_STM32F1X) && \
-	!defined(CONFIG_SOC_SERIES_STM32F4X) && \
+#if !defined(CONFIG_SOC_SERIES_STM32F4X) && \
 	!defined(CONFIG_SOC_SERIES_STM32G4X) && \
 	!defined(CONFIG_SOC_SERIES_STM32MP1X)
 static uint32_t __maybe_unused (*const get_channel_capture[])(const TIM_TypeDef *) = {
@@ -139,8 +136,7 @@ static void __maybe_unused (*const disable_capture_interrupt[])(TIM_TypeDef *) =
 };
 
 /** Channel to is capture active flag mapping. */
-#if !defined(CONFIG_SOC_SERIES_STM32F1X) && \
-	!defined(CONFIG_SOC_SERIES_STM32F4X) && \
+#if !defined(CONFIG_SOC_SERIES_STM32F4X) && \
 	!defined(CONFIG_SOC_SERIES_STM32G4X) && \
 	!defined(CONFIG_SOC_SERIES_STM32MP1X)
 static uint32_t __maybe_unused (*const is_capture_active[])(const TIM_TypeDef *) = {
@@ -157,7 +153,7 @@ static void __maybe_unused (*const clear_capture_interrupt[])(TIM_TypeDef *) = {
 	LL_TIM_ClearFlag_CC3, LL_TIM_ClearFlag_CC4
 };
 
-static uint32_t __maybe_unused (*const is_it_enabled[])(TIM_TypeDef *) = {
+static uint32_t __maybe_unused (*const is_it_enabled[])(const TIM_TypeDef *) = {
 	LL_TIM_IsEnabledIT_CC1, LL_TIM_IsEnabledIT_CC2,
 	LL_TIM_IsEnabledIT_CC3, LL_TIM_IsEnabledIT_CC4
 };
@@ -302,17 +298,18 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 	uint32_t ll_channel;
 	uint32_t current_ll_channel; /* complementary output if used */
 	uint32_t negative_ll_channel;
-    int i;
+    int gpio_idx;
     
-    for (i = 0; i < NUM_GPIOS; i++) {
-        if (cfg->channels[i] == channel)
+    for (gpio_idx = 0; gpio_idx < cfg->num_gpios; gpio_idx++) {
+        if (cfg->channels[gpio_idx] == channel)
             break;
     }
 
-	if (channel < 1u || channel > TIMER_MAX_CH || i == NUM_GPIOS) {
+	if (channel < 1u || channel > TIMER_MAX_CH || gpio_idx == cfg->num_gpios) {
 		LOG_ERR("Invalid channel (%d)", channel);
 		return -EINVAL;
 	}
+	disable_capture_interrupt[channel - 1](cfg->timer);
 
 	/*
 	 * Non 32-bit timers count from 0 up to the value in the ARR register
@@ -421,9 +418,13 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 		set_timer_compare[channel - 1u](cfg->timer, pulse_cycles);
 		LL_TIM_SetAutoReload(cfg->timer, period_cycles);
 	}
-    data->pulse_cycles[i] = pulse_cycles;
-    enable_capture_interrupt[channel - 1](cfg->timer);
-	LL_TIM_EnableIT_UPDATE(cfg->timer);
+    data->pulse_cycles[gpio_idx] = pulse_cycles;
+    if (pulse_cycles) {
+		enable_capture_interrupt[channel - 1](cfg->timer);
+		LL_TIM_EnableIT_UPDATE(cfg->timer);
+	} else {
+		gpio_pin_set_dt(&cfg->sw_gpio[gpio_idx], 0);
+	}
 	return 0;
 }
 
@@ -439,14 +440,15 @@ int chan2srbit[] = {
 static void pwm_stm32_isr(const struct device *dev)
 {
 	const struct pwm_stm32_config *cfg = dev->config;
-    struct pwm_stm32_data *data = dev->data;
     int sr = READ_REG(cfg->timer->SR);
-    uint32_t cnt = LL_TIM_GetCounter(cfg->timer);
+
+	uint32_t cnt = LL_TIM_GetCounter(cfg->timer);
+	struct pwm_stm32_data *data = dev->data;
 #if 0
     int dier = READ_REG(cfg->timer->DIER);
     printk("%10u:isr 0x%x 0x%x 0x%x pin %d\n", k_uptime_get_32(), sr, dier, READ_REG(cfg->timer->CNT), cfg->sw_gpio[0].pin);
 #endif
-    for (int i = 0; i < NUM_GPIOS; i++) {
+    for (int i = 0; i < cfg->num_gpios; i++) {
         int channel = cfg->channels[i];
         if (!is_it_enabled[channel - 1](cfg->timer))
             continue;
@@ -454,8 +456,10 @@ static void pwm_stm32_isr(const struct device *dev)
         if (sr & sr_bit) {
             gpio_pin_set_dt(&cfg->sw_gpio[i], 0);
             WRITE_REG(cfg->timer->SR, ~(sr_bit));
-            if (cnt != data->pulse_cycles[i])
+#if 1
+            if (abs((int32_t)cnt - (int32_t)data->pulse_cycles[i]) > 2)
                 printk("cnt=%d, exp %d\n",cnt, data->pulse_cycles[i]);
+#endif
         }
         if (sr & TIM_SR_UIF) {
             gpio_pin_set_dt(&cfg->sw_gpio[i], 1);
@@ -536,7 +540,7 @@ static int pwm_stm32_init(const struct device *dev)
 
 	LL_TIM_EnableCounter(cfg->timer);
 
-    for (int i = 0; i < NUM_GPIOS; i++) {
+    for (int i = 0; i < cfg->num_gpios; i++) {
         if (gpio_is_ready_dt(&cfg->sw_gpio[i])) {
             if (gpio_pin_configure_dt(&cfg->sw_gpio[i], GPIO_OUTPUT_ACTIVE) < 0)
                 LOG_ERR("gpio_pin_configure_dt fail");
@@ -594,8 +598,9 @@ static void pwm_stm32_irq_config_func_##index(const struct device *dev)		\
 		.prescaler = DT_PROP(PWM(index), st_prescaler),		       \
 		.countermode = DT_PROP(PWM(index), st_countermode),	       \
 		.pclken = DT_INST_CLK(index, timer),                           \
-        .sw_gpio = { ARR_INIT(0, gpios) },  \
+        .sw_gpio = { ARR_INIT(index, gpios) },  \
         .channels = DT_PROP(DT_INST(index, st_stm32_pwm_sw), channels),  \
+        .num_gpios = ARR_LEN(index, gpios), \
 		.irq_config_func = pwm_stm32_irq_config_func_##index, \
 	};                                                                     \
 									       \
