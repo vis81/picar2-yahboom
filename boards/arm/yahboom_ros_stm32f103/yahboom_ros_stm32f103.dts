@@ -68,7 +68,7 @@
 	/* usbpre not set: USB clock = 72 / 1.5: 48MHz */
 };
 
-/* serial servo port */
+/* FTDI port */
 &usart1 {
 	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
 	pinctrl-names = "default";
@@ -85,7 +85,7 @@
 
 /* FTDI or I2C port */
 &usart3 {
-	/* USB pins */
+	/* serial servo pins */
 	// pinctrl-0 = <&usart3_tx_remap1_pc10 &usart3_rx_remap1_pc11>;
 	/* I2C pins SCL=TX SDA=RX */
 	pinctrl-0 = <&usart3_tx_pb10 &usart3_rx_pb11>;
@@ -242,7 +242,7 @@
 };
 
 &adc1 {
-	pinctrl-0 = <&adc1_in0_pa0>;
+	pinctrl-0 = <&adc1_in14_pc4>;
 	pinctrl-names = "default";
 	status = "disabled";
 };
@@ -253,7 +253,7 @@
 
 &pinctrl {
 	/* needed to enable PA15 for T2 encoder */
-	swj-cfg = "disable";
+	swj-cfg = "jtag-disable";
 };
 
 
