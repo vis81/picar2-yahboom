@@ -269,6 +269,17 @@
 	pinctrl-0 = <&adc1_in14_pc4>;
 	pinctrl-names = "default";
 	status = "disabled";
+	#address-cells = <1>;
+	#size-cells = <0>;
+
+	channel@14 {
+		reg = <14>;
+		zephyr,gain = "ADC_GAIN_1";
+		zephyr,reference = "ADC_REF_INTERNAL";
+		zephyr,acquisition-time = <ADC_ACQ_TIME_DEFAULT>;
+		zephyr,resolution = <12>;
+	};
+
 };
 
 &die_temp {
