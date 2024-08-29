@@ -12,6 +12,7 @@ enum buzzer_sound {
 	BUZZER_LAST = BUZZER_FUNKYTOWN
 };
 
+int buzzer_init();
 int buzzer_play(enum buzzer_sound id, uint8_t volume);
 
 #endif

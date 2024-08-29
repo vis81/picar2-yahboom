@@ -132,6 +132,14 @@ static const struct note_duration *songs[] = {
 	funkytown_song,
 };
 
+int buzzer_init() {
+	if (!pwm_is_ready_dt(&sBuzzer)) {
+			printk("Error: PWM device %s is not ready\n", sBuzzer.dev->name);
+		return -EBUSY;
+	}
+	pwm_set_pulse_dt(&sBuzzer, 0);
+	return 0;
+}
 
 static int buzzer_play_song(const struct note_duration *song, uint8_t volume) {
 	pwm_set_pulse_dt(&sBuzzer, 0);
