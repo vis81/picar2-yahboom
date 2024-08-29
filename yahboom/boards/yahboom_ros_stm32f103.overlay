@@ -171,3 +171,10 @@
 	status = "okay";
 };
 
+/* MPU9250 port*/
+&i2c3 {
+	status = "okay";
+	mpu9250@69 {
+			status = "okay";
+	};
+};
