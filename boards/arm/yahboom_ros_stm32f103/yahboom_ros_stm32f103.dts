@@ -16,6 +16,7 @@
 	chosen {
 		zephyr,console = &usart3;
 		zephyr,shell-uart = &usart3;
+		zephyr,code-partition = &slot0_partition;
 		zephyr,sram = &sram0;
 		zephyr,flash = &flash0;
 	};
@@ -255,6 +256,25 @@
 	/* needed to enable PA15 for T2 encoder */
 	swj-cfg = "jtag-disable";
 };
+
+&flash0 {
+        partitions {
+                compatible = "fixed-partitions";
+                #address-cells = <1>;
+                #size-cells = <1>;
+
+                boot_partition: partition@0 {
+                        label = "mcuboot";
+                        reg = <0x00000000 DT_SIZE_K(64)>;
+                        read-only;
+                };
+                slot0_partition: partition@10000 {
+                        label = "image-0";
+                        reg = <0x00010000 DT_SIZE_K(128)>;
+                };
+        };
+};
+
 
 
 /* for ssd1306_128x32.overlay */
