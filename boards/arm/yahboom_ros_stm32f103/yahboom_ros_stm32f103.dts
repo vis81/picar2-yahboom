@@ -37,6 +37,29 @@
 		};
 	};
 
+	/* MPU9250 port*/
+	i2c3: i2c3 {
+		compatible = "gpio-i2c";
+		status = "disabled";
+		clock-frequency = <I2C_BITRATE_FAST>;
+		sda-gpios = <&gpiob 15 (GPIO_OPEN_DRAIN)>;
+		scl-gpios = <&gpiob 13 (GPIO_OPEN_DRAIN)>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		mpu9250@69 {
+				compatible = "invensense,mpu9250";
+				reg = <0x69>;
+				status = "disabled";
+				irq-gpios = <&gpioa 4 GPIO_ACTIVE_HIGH>;
+				gyro-sr-div = <10>;
+				gyro-dlpf = <5>;
+				gyro-fs = <250>;
+				accel-fs = <2>;
+				accel-dlpf="5.05";
+        };
+	};
+
 	aliases {
 		led0 = &green_led_1;
 		sw0 = &user_button;
