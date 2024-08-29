@@ -105,6 +105,14 @@
 	pinctrl-0 = <&usart2_tx_pa2 &usart2_rx_pa3>;
 	pinctrl-names = "default";
 	current-speed = <100000>;
+	parity = "even";
+	stop-bits = "2";
+	data-bits = <8>;
+    rc: sbus {
+        compatible = "sbus-receiver";
+        label = "sbus0";
+        status = "disabled";
+	};
 };
 
 /* FTDI or I2C port */

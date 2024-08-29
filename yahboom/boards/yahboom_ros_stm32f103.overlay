@@ -139,14 +139,8 @@
 };
 
 &usart2 {
-	current-speed = <100000>;
-	parity = "even";
-	stop-bits = "2";
-	data-bits = <8>;
 	status = "okay";
     rc: sbus {
-        compatible = "sbus-receiver";
-        label = "sbus0";
         status = "okay";
         ch_1 {
             channel = <1>;
