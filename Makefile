@@ -4,6 +4,21 @@ CONN_STRING=dev=/dev/ttyUSB0,baud=115200
 #APP_DIR=samples/subsys/shell/devmem_load/
 APP_DIR=yahboom
 
+MCUMGR=~/go/bin/mcumgr
+
+.PHONY: yahboom
+
+all: yahboom
+
+clean:
+	rm -rf build
+
+yahboom:
+	west build -s $(APP_DIR) -b $(BOARD)
+
+sample_nvs:
+	west build -b $(BOARD) ../zephyr/samples/subsys/nvs/
+
 mcuboot:
 	west build -p \
 		-s ../bootloader/mcuboot/boot/zephyr \
@@ -28,6 +43,9 @@ app-signed:
 		-DCONFIG_BOOTLOADER_MCUBOOT=y \
 		-DCONFIG_MCUBOOT_SIGNATURE_KEY_FILE=\"bootloader/mcuboot/root-rsa-2048.pem\"
 
+flash:
+	west flash
+
 flash-app-signed:
 	west flash -d build/app-signed/ --start-addr=0x08010000
 
@@ -36,7 +54,9 @@ flash-mcuboot:
 
 flash-app-signed-mcumgr:
 	echo "Press reset"
-	~/go/bin/mcumgr --conntype serial --connstring $(CONN_STRING) image upload build/app-signed/zephyr/zephyr.signed.bin
-	~/go/bin/mcumgr --conntype serial --connstring $(CONN_STRING) image list
-	~/go/bin/mcumgr --conntype serial --connstring $(CONN_STRING) reset
+	$(MCUMGR) --conntype serial --connstring $(CONN_STRING) image upload build/app-signed/zephyr/zephyr.signed.bin
+	$(MCUMGR) --conntype serial --connstring $(CONN_STRING) image list
+	$(MCUMGR) --conntype serial --connstring $(CONN_STRING) reset
 
+test_control: yahboom/test/test_control.cpp
+	g++ -Wall -g -pthread $<  -lgtest_main  -lgtest -lpthread -o $@
