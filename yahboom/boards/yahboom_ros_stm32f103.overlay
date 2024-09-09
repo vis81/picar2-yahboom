@@ -3,6 +3,10 @@
 #include <zephyr/dt-bindings/input/input-event-codes.h>
 
 / {
+	chosen {
+		zephyr,uart-pipe = &usart1;
+	};
+
     servo0: nrf-servo0 {
         compatible = "pwm-servo";
         pwms = <&pwm_sw_t3 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
