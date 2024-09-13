@@ -25,7 +25,7 @@
 #define THROTTLE_ERROR 0.25f
 
 #define MIN_SPEED 300
-#define MAX_SPEED 3000
+#define MAX_SPEED 3600
 #define SPEED_STEP 300
 
 #define ONE_SECOND 1*1000*1000
@@ -195,15 +195,17 @@ TEST_F(MyAppTestSuite, speed_pos_50Hz) {
 	}
 }
 
-TEST_F(MyAppTestSuite, speed_forward) {
+TEST_F(MyAppTestSuite, speed) {
 	int speed;
+	SpeedTest(MIN_SPEED, 0);
+	SpeedTest(0, MIN_SPEED);
+	SpeedTest(-MIN_SPEED, 0);
+	SpeedTest(0, -MIN_SPEED);
 	for (speed = MIN_SPEED; speed <= MAX_SPEED; speed += SPEED_STEP) {
 		SpeedTest(speed, speed);
 	}
-}
-
-TEST_F(MyAppTestSuite, speed_backward) {
-	int speed;
+	SetMotors(0, 0); // fix driver to reset speed when breaking?
+	Break();
 	for (speed = -MIN_SPEED; speed >= -MAX_SPEED; speed -= SPEED_STEP) {
 		SpeedTest(speed, speed);
 	}
