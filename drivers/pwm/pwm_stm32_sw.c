@@ -442,12 +442,23 @@ static void pwm_stm32_isr(const struct device *dev)
 	const struct pwm_stm32_config *cfg = dev->config;
     int sr = READ_REG(cfg->timer->SR);
 
-	uint32_t cnt = LL_TIM_GetCounter(cfg->timer);
 	struct pwm_stm32_data *data = dev->data;
 #if 0
     int dier = READ_REG(cfg->timer->DIER);
     printk("%10u:isr 0x%x 0x%x 0x%x pin %d\n", k_uptime_get_32(), sr, dier, READ_REG(cfg->timer->CNT), cfg->sw_gpio[0].pin);
 #endif
+    /* Process UPDATE first so that when both UIF and CC are pending
+     * (ISR delayed past pulse end), the final GPIO state is LOW (CC wins). */
+    if (sr & TIM_SR_UIF) {
+        for (int i = 0; i < cfg->num_gpios; i++) {
+            int channel = cfg->channels[i];
+            if (!is_it_enabled[channel - 1](cfg->timer))
+                continue;
+            gpio_pin_set_dt(&cfg->sw_gpio[i], 1);
+        }
+        LL_TIM_ClearFlag_UPDATE(cfg->timer);
+    }
+
     for (int i = 0; i < cfg->num_gpios; i++) {
         int channel = cfg->channels[i];
         if (!is_it_enabled[channel - 1](cfg->timer))
@@ -456,17 +467,8 @@ static void pwm_stm32_isr(const struct device *dev)
         if (sr & sr_bit) {
             gpio_pin_set_dt(&cfg->sw_gpio[i], 0);
             WRITE_REG(cfg->timer->SR, ~(sr_bit));
-#if 1
-            if (abs((int32_t)cnt - (int32_t)data->pulse_cycles[i]) > 2)
-                printk("cnt=%d, exp %d\n",cnt, data->pulse_cycles[i]);
-#endif
-        }
-        if (sr & TIM_SR_UIF) {
-            gpio_pin_set_dt(&cfg->sw_gpio[i], 1);
         }
     }
-    if (sr & TIM_SR_UIF)
-        LL_TIM_ClearFlag_UPDATE(cfg->timer);
 }
 
 
@@ -574,7 +576,8 @@ static int pwm_stm32_init(const struct device *dev)
 static void pwm_stm32_irq_config_func_##index(const struct device *dev)		\
 {										\
 	COND_CODE_1(DT_IRQ_HAS_NAME(PWM(index), cc),				\
-		(IRQ_CONNECT_AND_ENABLE_BY_NAME(index, cc)),			\
+		(IRQ_CONNECT_AND_ENABLE_BY_NAME(index, cc)			\
+		 IRQ_CONNECT_AND_ENABLE_BY_NAME(index, up)),			\
 		(IRQ_CONNECT_AND_ENABLE_DEFAULT(index))				\
 	);									\
 }
