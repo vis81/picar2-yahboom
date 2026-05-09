@@ -11,3 +11,7 @@
 /twister-out*
 
 __pycache__/
+
+# Zephyr workspaces and SDKs (managed by setup-workspace.sh / make new)
+/ws/
+/sdks/

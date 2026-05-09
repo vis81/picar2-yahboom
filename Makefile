@@ -1,23 +1,86 @@
+# ── workspace manager ────────────────────────────────────────────────────────
+ZEPHYR_VER   ?= v3.7.0
+SDK_VER      ?= 0.17.0
+WS_NAME      ?= $(ZEPHYR_VER)
+TOOLCHAIN    ?= arm-zephyr-eabi
+SDK_PLATFORM ?= linux-x86_64
+MODULES      ?= cmsis hal_stm32 mcuboot
+
+export TOOLCHAIN SDK_PLATFORM MODULES
+
+# ── app build ────────────────────────────────────────────────────────────────
 BOARD       = yahboom_ros_stm32f103
 CONN_STRING = dev=/dev/ttyUSB0,baud=115200
 APP_DIR     = yahboom
+MCUMGR      = ~/go/bin/mcumgr
 
-MCUMGR = ~/go/bin/mcumgr
-
-# ZEPHYR_SDK_INSTALL_DIR and ZEPHYR_BASE are set by `source activate.sh`
-# in the workspace root before running make.
-
-.PHONY: all yahboom clean \
+.PHONY: help all yahboom clean \
         sample_nvs mcuboot app-signed \
         flash flash-app-signed flash-mcuboot flash-app-signed-mcumgr \
-        test_control check-env
+        test_control check-env \
+        new sdk sdk-list list clean-ws
+
+# ── help ─────────────────────────────────────────────────────────────────────
+
+help:
+	@echo ""
+	@echo "Workspace management:"
+	@echo "  make new         [ZEPHYR_VER=v3.7.0] [SDK_VER=0.17.0] [WS_NAME=v3.7.0]"
+	@echo "                   [MODULES='cmsis hal_stm32 mcuboot']"
+	@echo "                   Create a new workspace in ws/<ver>/"
+	@echo "  make sdk         [SDK_VER=0.17.0]   Download SDK into sdks/"
+	@echo "  make sdk-list                        List installed SDKs"
+	@echo "  make list                            List workspaces"
+	@echo "  make clean-ws    [WS_NAME=v3.7.0]   Delete a workspace"
+	@echo ""
+	@echo "App build (requires activated workspace):"
+	@echo "  make yahboom     Build the main application"
+	@echo "  make mcuboot     Build MCUboot bootloader"
+	@echo "  make app-signed  Build application with MCUboot signing"
+	@echo "  make flash       Flash via west"
+	@echo "  make clean       Remove build directory"
+	@echo ""
+	@echo "Activate a workspace first:"
+	@echo "  source ws/$(WS_NAME)/activate.sh"
+	@echo "  source ./zephyr-env.sh"
+	@echo ""
+	@echo "Examples:"
+	@echo "  make new ZEPHYR_VER=v3.5.0 SDK_VER=0.16.9"
+	@echo "  make new ZEPHYR_VER=v3.7.0 SDK_VER=0.17.0"
+	@echo "  make sdk SDK_VER=0.17.0"
+	@echo ""
+
+# ── workspace manager targets ────────────────────────────────────────────────
+
+new:
+	./setup-workspace.sh new $(ZEPHYR_VER) $(SDK_VER) $(WS_NAME)
+
+sdk:
+	./setup-workspace.sh sdk download $(SDK_VER)
+
+sdk-list:
+	./setup-workspace.sh sdk list
+
+list:
+	./setup-workspace.sh list
+
+clean-ws:
+	@WS_PATH="$(CURDIR)/ws/$(WS_NAME)"; \
+	if [ ! -d "$$WS_PATH" ]; then \
+	    echo "Workspace not found: $$WS_PATH"; exit 1; \
+	fi; \
+	read -r -p "Delete $$WS_PATH? [y/N] " ans; \
+	[ "$$ans" = "y" ] || [ "$$ans" = "Y" ] || { echo "Aborted."; exit 0; }; \
+	rm -rf "$$WS_PATH" && echo "Deleted $$WS_PATH"
+
+# ── app build targets ─────────────────────────────────────────────────────────
 
 check-env:
 	@if ! command -v west > /dev/null 2>&1; then \
 		echo ""; \
 		echo "ERROR: 'west' not found. Activate a workspace first:"; \
 		echo ""; \
-		echo "  source ../ws-v3.5.0/activate.sh"; \
+		echo "  source ./ws/$(WS_NAME)/activate.sh"; \
 		echo "  source ./zephyr-env.sh"; \
 		echo ""; \
 		exit 1; \
@@ -26,7 +89,7 @@ check-env:
 		echo ""; \
 		echo "ERROR: ZEPHYR_BASE is not set. Activate a workspace first:"; \
 		echo ""; \
-		echo "  source ../ws-v3.5.0/activate.sh"; \
+		echo "  source ./ws/$(WS_NAME)/activate.sh"; \
 		echo "  source ./zephyr-env.sh"; \
 		echo ""; \
 		exit 1; \
