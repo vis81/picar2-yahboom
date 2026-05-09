@@ -10,6 +10,8 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
+#include <zephyr/sys/reboot.h>
+#include <soc.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/input/sbusreceiver.h>
 #include <zephyr/drivers/pwm.h>
@@ -34,6 +36,58 @@
 #include "servo.h"
 
 LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
+
+/* STM32F103 system memory (ROM bootloader) address */
+#define STM32_SYSTEM_MEMORY 0x1FFFF000U
+
+static void jump_to_system_bootloader(void)
+{
+	uint32_t msp = *(volatile uint32_t *)STM32_SYSTEM_MEMORY;
+	uint32_t pc  = *(volatile uint32_t *)(STM32_SYSTEM_MEMORY + 4U);
+
+	/* Disable SysTick */
+	SysTick->CTRL = 0;
+	SysTick->LOAD = 0;
+	SysTick->VAL  = 0;
+
+	/* Disable all IRQs and clear pending */
+	for (int i = 0; i < 8; i++) {
+		NVIC->ICER[i] = 0xFFFFFFFFU;
+		NVIC->ICPR[i] = 0xFFFFFFFFU;
+	}
+
+	/* Reset all APB peripherals so the ROM bootloader gets a clean USART1 */
+	RCC->APB1RSTR = 0xFFFFFFFFU;
+	RCC->APB2RSTR = 0xFFFFFFFFU;
+	RCC->APB1RSTR = 0x00000000U;
+	RCC->APB2RSTR = 0x00000000U;
+
+	/* Point vector table at system memory */
+	SCB->VTOR = STM32_SYSTEM_MEMORY;
+
+	__DSB();
+	__ISB();
+
+	__set_MSP(msp);
+	((void (*)(void))pc)();
+}
+
+#ifdef CONFIG_SHELL
+static int cmd_sys_bootloader(const struct shell *sh, size_t argc, char **argv)
+{
+	shell_print(sh, "entering STM32 bootloader");
+	k_msleep(50);
+	jump_to_system_bootloader();
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_sys,
+	SHELL_CMD(bootloader, NULL, "reboot into bootloader", cmd_sys_bootloader),
+	SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(sys, &sub_sys, "system commands", NULL);
+#endif
 
 
 
