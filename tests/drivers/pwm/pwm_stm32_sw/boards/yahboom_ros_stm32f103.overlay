@@ -1,0 +1,32 @@
+/*
+ * SPDX-License-Identifier: Apache-2.0
+ *
+ * Test overlay for pwm_stm32_sw unit tests.
+ * Uses TIM2 channel 1 with GPIO PC13 as the single SW-PWM output.
+ */
+
+/ {
+	aliases {
+		pwm-sw-test = &test_pwm_ch;
+	};
+
+	pwmleds {
+		compatible = "pwm-leds";
+		test_pwm_ch: test_pwm_ch {
+			pwms = <&pwm_sw_t2 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+		};
+	};
+};
+
+&timers2 {
+	st,prescaler = <1000>;
+	status = "okay";
+
+	pwm_sw_t2: pwm_sw {
+		compatible = "st,stm32-pwm-sw";
+		status = "okay";
+		gpios = <&gpioc 13 GPIO_ACTIVE_HIGH>;
+		channels = <1>;
+		#pwm-cells = <3>;
+	};
+};
