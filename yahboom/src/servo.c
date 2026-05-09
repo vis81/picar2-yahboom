@@ -53,8 +53,12 @@ int servo_init(void)
 	return 0;
 }
 
-int servo_steer(int32_t val) {
+int servo_steer(uint8_t val) {
 	return servo_write(servo[0], val);
+}
+
+int servo_get(uint8_t *pval) {
+	return servo_read(servo[0], pval);
 }
 
 #ifdef CONFIG_SHELL

@@ -13,10 +13,16 @@
 
 #define READ_BUF_SIZE 64
 
+#define CMD_SERVO_SET "$w%d:%d\n"
+#define CMD_SERVO_GET "$r%d\n"
+
 #define CMD_MOTOR_READ_POS "$p0\n$p1\n"
 #define CMD_MOTOR_SET_SPEED "$s0:%d\n$s1:%d\n"
 #define CMD_MOTOR_SET_THROTTLE "$t0:%d,%d\n$t1:%d,%d\n"
-#define RESP_OK "@0\n@0\n"
+#define CMD_ECHO_PREFIX "$e:"
+#define RESP_OK "@0\n"
+#define RESP_OK2 "@0\n@0\n"
+#define RESP_OK_1ARG "@1:%d\n"
 
 #define DIR_FORWARD 2
 #define DIR_BACKWARD 3
@@ -33,6 +39,8 @@
 #define BREAK_TIME_US 500*1000
 #define BREAK_CHECK_TIME_US 100*1000
 
+#define SERVO_SETTLE_TIME_US 1*1000*1000
+
 
 #define TARGET_SPEED_50 2200
 #define TARGET_SPEED_50_ERR 200
@@ -43,8 +51,7 @@
 int fd;
 char uart_buf[READ_BUF_SIZE];
 
-int
-set_interface_attribs (int fd, int speed, int parity)
+int set_interface_attribs (int fd, int speed, int parity)
 {
         struct termios tty;
         if (tcgetattr (fd, &tty) != 0)
@@ -126,7 +133,23 @@ public:
 		sprintf(uart_buf, CMD_MOTOR_SET_SPEED, vel_l, vel_r);
 		ret = write(fd, uart_buf, strlen(uart_buf));
 		EXPECT_EQ(ret, strlen(uart_buf));
+		ReadResponse(RESP_OK2);
+	}
+
+	void SetServo(int id, uint8_t pulse) {
+		int ret;
+		char buf[30];
+
+		sprintf(uart_buf, CMD_SERVO_SET, id, pulse);
+		ret = write(fd, uart_buf, strlen(uart_buf));
+		EXPECT_EQ(ret, strlen(uart_buf));
 		ReadResponse(RESP_OK);
+
+		sprintf(uart_buf, CMD_SERVO_GET, id);
+		ret = write(fd, uart_buf, strlen(uart_buf));
+		EXPECT_EQ(ret, strlen(uart_buf));
+		sprintf(buf, RESP_OK_1ARG, pulse);
+		ReadResponse(buf);
 	}
 
 	void SetThrottle(int dir_l, int thr_l, int dir_r, int thr_r) {
@@ -134,7 +157,7 @@ public:
 		sprintf(uart_buf, CMD_MOTOR_SET_THROTTLE, dir_l, thr_l, dir_r, thr_r);
 		ret = write(fd, uart_buf, strlen(uart_buf));
 		EXPECT_EQ(ret, strlen(uart_buf));
-		ReadResponse(RESP_OK);
+		ReadResponse(RESP_OK2);
 	}
 
 	void Break() {
@@ -293,10 +316,18 @@ TEST_F(MyAppTestSuite, throttle) {
 TEST_F(MyAppTestSuite, dummy) {
 }
 
+TEST_F(MyAppTestSuite, servo) {
+	SetServo(0, 0);
+	usleep(SERVO_SETTLE_TIME_US);
+	SetServo(0, 100);
+	usleep(SERVO_SETTLE_TIME_US);
+	SetServo(0, 50);
+}
+
 TEST_F(MyAppTestSuite, echo_stress) {
 	char echo_cmd_str[READ_BUF_SIZE];
 	for (int i = 0; i < 100; i++) {
-		sprintf(echo_cmd_str, "$e:");
+		sprintf(echo_cmd_str, CMD_ECHO_PREFIX);
 		for (int j = 3 ; j < READ_BUF_SIZE - 2; j++)
 			echo_cmd_str[j] = 'a' + (rand() % 26);
 		echo_cmd_str[READ_BUF_SIZE - 2] = '\n';

@@ -44,6 +44,25 @@ static void control_work_handler(struct k_work *work);
 static K_WORK_DEFINE(work, control_work_handler);
 
 
+int cmd_servo_read(const char* buf, int32_t *pval) {
+	int32_t idx;
+	int ret;
+	uint8_t val;
+	if(sscanf(buf, "$r%d", &idx) != 1)
+		return -EINVAL;
+	ret = servo_get(&val);
+	*pval = val;
+	return ret ? ret : 1;
+}
+
+int cmd_servo_write(const char* buf) {
+	int32_t idx;
+	int val;
+	if(sscanf(buf, "$w%d:%d", &idx, &val) != 2)
+		return -EINVAL;
+	return servo_steer(val);
+}
+
 int cmd_position(const char* buf, int32_t val[2]) {
 	int32_t idx;
 	int ret;
@@ -78,7 +97,11 @@ int parse_cmd(const char* buf, char* resp) {
 		LOG_ERR("No start byte");
 		return -EINVAL;
 	}
-	if (buf[1] == 'p')
+	if (buf[1] == 'r')
+		ret = cmd_servo_read(buf, &retval[0]);
+	else if (buf[1] == 'w')
+		ret = cmd_servo_write(buf);
+	else if (buf[1] == 'p')
 		ret = cmd_position(buf, retval);
 	else if (buf[1] == 's')
 		ret = cmd_speed(buf);

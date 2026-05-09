@@ -61,7 +61,7 @@ static inline int channel_set(const struct device *dev,
 		return -EINVAL;
 	uint32_t val = MAP(value, PWM_USEC(p_cfg->min_pulse_us), PWM_USEC(p_cfg->max_pulse_us));
 	p_data->current_value = value;
-	//printk("pwm set %u\n", val);
+	LOG_DBG("Set pulse %u", val);
     return pwm_set_pulse_dt(&p_cfg->pwm_spec, val);
 }
 
