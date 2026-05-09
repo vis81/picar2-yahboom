@@ -1,0 +1,5 @@
+board:
+  name: yahboom_ros_stm32f103
+  vendor: yahboom
+  socs:
+    - name: stm32f103xe
