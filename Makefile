@@ -3,7 +3,7 @@ CONN_STRING = dev=/dev/ttyUSB0,baud=115200
 APP_DIR     = yahboom
 MCUMGR      = ~/go/bin/mcumgr
 
-.PHONY: help all $(APP_DIR) clean \
+.PHONY: help all $(APP_DIR) clean distclean \
         mcuboot app-signed \
         flash flash-app-signed flash-mcuboot flash-app-signed-mcumgr \
         check-env
@@ -22,6 +22,7 @@ help:
 	@echo "  make app-signed      Build application with MCUboot signing"
 	@echo "  make flash           Flash via west"
 	@echo "  make clean           Remove build directory"
+	@echo "  make distclean       Remove build + zephyr_os/ + .west/ (re-run activate.sh after)"
 	@echo ""
 	@echo "Switching Zephyr versions:"
 	@echo "  git checkout <branch>"
@@ -51,8 +52,11 @@ all: $(APP_DIR)
 clean:
 	rm -rf build
 
+distclean:
+	rm -rf build zephyr_os .west
+
 $(APP_DIR): check-env
-	west build -s $(APP_DIR) -b $(BOARD)
+	west build -p auto -s $(APP_DIR) -b $(BOARD)
 
 mcuboot: check-env
 	west build -p \
