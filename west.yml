@@ -20,5 +20,4 @@ manifest:
         path-prefix: zephyr_os   # redirects all imported modules under zephyr_os/
 
   self:
-    path: .
     west-commands: scripts/west-commands.yml

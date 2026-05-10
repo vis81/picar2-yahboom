@@ -35,16 +35,33 @@ if ! pip show west &>/dev/null 2>&1; then
 fi
 
 # ── west init ────────────────────────────────────────────────────────────────
-if [[ ! -d "$REPO/.west" ]]; then
+# west init -l creates .west/ in the PARENT directory by design (it treats the
+# parent as the workspace root).  We instead write .west/config manually so
+# the workspace root is the repo itself and all paths in west.yml resolve
+# inside this directory.
+if [[ ! -f "$REPO/.west/config" ]]; then
     echo "  Initialising west workspace ..."
-    (cd "$REPO" && west init -l .)
+    mkdir -p "$REPO/.west"
+    cat > "$REPO/.west/config" << 'EOF'
+[manifest]
+path = .
+file = west.yml
+EOF
 fi
 
 # ── west update ──────────────────────────────────────────────────────────────
 if [[ ! -d "$REPO/zephyr_os/zephyr" ]]; then
     echo "  Running west update (first time — this may take a few minutes) ..."
     (cd "$REPO" && west update)
-    pip install -q -r "$REPO/zephyr_os/zephyr/scripts/requirements.txt"
+fi
+
+# ── Zephyr Python requirements ───────────────────────────────────────────────
+_req="$REPO/zephyr_os/zephyr/scripts/requirements.txt"
+_marker="$REPO/.venv/.zephyr_req_installed"
+if [[ -f "$_req" ]] && [[ ! -f "$_marker" ]]; then
+    echo "  Installing Zephyr Python requirements ..."
+    pip install -q -r "$_req"
+    touch "$_marker"
 fi
 
 # ── SDK ──────────────────────────────────────────────────────────────────────
