@@ -81,7 +81,7 @@ static void battery_mon_func(struct k_work *work)
 
 #ifdef CONFIG_SHELL
 
-static int cmd_read(const struct shell *sh, size_t argc, char **argv)
+static int cmd_voltage(const struct shell *sh, size_t argc, char **argv)
 {
 	int val;
 	int err = battery_read(&val);
@@ -108,7 +108,7 @@ static int cmd_level(const struct shell *sh, size_t argc, char **argv)
 }
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_battery,
-	SHELL_CMD(read,    NULL, "Print battery voltage in mV", cmd_read),
+	SHELL_CMD(voltage, NULL, "Print battery voltage in mV", cmd_voltage),
 	SHELL_CMD(level,   NULL, "Print battery charge level in %%", cmd_level),
 	SHELL_SUBCMD_SET_END
 );
