@@ -41,10 +41,10 @@ if [[ ! -d "$REPO/.west" ]]; then
 fi
 
 # ── west update ──────────────────────────────────────────────────────────────
-if [[ ! -d "$REPO/zephyr" ]]; then
+if [[ ! -d "$REPO/deps/zephyr" ]]; then
     echo "  Running west update (first time — this may take a few minutes) ..."
     (cd "$REPO" && west update)
-    pip install -q -r "$REPO/zephyr/scripts/requirements.txt"
+    pip install -q -r "$REPO/deps/zephyr/scripts/requirements.txt"
 fi
 
 # ── SDK ──────────────────────────────────────────────────────────────────────
@@ -61,11 +61,11 @@ fi
 
 # ── export ───────────────────────────────────────────────────────────────────
 export ZEPHYR_SDK_INSTALL_DIR="$SDK_DIR"
-export ZEPHYR_BASE="$REPO/zephyr"
+export ZEPHYR_BASE="$REPO/deps/zephyr"
 
 # ── status ───────────────────────────────────────────────────────────────────
 _branch=$(git -C "$REPO" branch --show-current 2>/dev/null || echo "(detached)")
-_zver=$(git -C "$REPO/zephyr" describe --tags 2>/dev/null || echo "?")
+_zver=$(git -C "$REPO/deps/zephyr" describe --tags 2>/dev/null || echo "?")
 echo "Branch : $_branch"
 echo "Zephyr : $_zver"
 echo "SDK    : ${SDK_VERSION}  ($SDK_DIR)"

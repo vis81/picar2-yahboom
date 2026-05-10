@@ -13,7 +13,9 @@
 __pycache__/
 
 # West-managed directories (T1 topology — workspace root = repo root)
-/zephyr/
+# Note: /zephyr/ is NOT listed here — it contains our own module.yml.
+#       Zephyr OS is cloned into /deps/zephyr/ to avoid that conflict.
+/deps/
 /modules/
 /bootloader/
 /.west/

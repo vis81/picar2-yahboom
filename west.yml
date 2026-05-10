@@ -11,6 +11,7 @@ manifest:
   projects:
     - name: zephyr
       revision: v3.5.0
+      path: deps/zephyr
       import:
         name-allowlist:
           - cmsis
