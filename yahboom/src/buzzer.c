@@ -128,9 +128,60 @@ static const struct note_duration funkytown_song[] = {
 	{.note = END}
 };
 
+/* Tetris runs at half the base tempo. */
+#define T_eigth   (eigth   * 2)
+#define T_quarter (quarter * 2)
+#define T_half    (half    * 2)
+
+static const struct note_duration tetris_song[] = {
+	/* Korobeiniki — Tetris Theme A */
+	{.note = E5,  .duration = T_quarter},
+	{.note = B4,  .duration = T_eigth},
+	{.note = C5,  .duration = T_eigth},
+	{.note = D5,  .duration = T_quarter},
+	{.note = C5,  .duration = T_eigth},
+	{.note = B4,  .duration = T_eigth},
+	{.note = A4,  .duration = T_quarter},
+	{.note = A4,  .duration = T_eigth},
+	{.note = C5,  .duration = T_eigth},
+	{.note = E5,  .duration = T_quarter},
+	{.note = D5,  .duration = T_eigth},
+	{.note = C5,  .duration = T_eigth},
+	{.note = B4,  .duration = T_quarter + T_eigth},
+	{.note = C5,  .duration = T_eigth},
+	{.note = D5,  .duration = T_quarter},
+	{.note = E5,  .duration = T_quarter},
+	{.note = C5,  .duration = T_quarter},
+	{.note = A4,  .duration = T_quarter},
+	{.note = A4,  .duration = T_half},
+	{.note = REST, .duration = T_quarter},
+
+	{.note = D5,  .duration = T_quarter + T_eigth},
+	{.note = F5,  .duration = T_eigth},
+	{.note = A5,  .duration = T_quarter},
+	{.note = G5,  .duration = T_eigth},
+	{.note = F5,  .duration = T_eigth},
+	{.note = E5,  .duration = T_quarter + T_eigth},
+	{.note = C5,  .duration = T_eigth},
+	{.note = E5,  .duration = T_quarter},
+	{.note = D5,  .duration = T_eigth},
+	{.note = C5,  .duration = T_eigth},
+	{.note = B4,  .duration = T_quarter},
+	{.note = B4,  .duration = T_eigth},
+	{.note = C5,  .duration = T_eigth},
+	{.note = D5,  .duration = T_quarter},
+	{.note = E5,  .duration = T_quarter},
+	{.note = C5,  .duration = T_quarter},
+	{.note = A4,  .duration = T_quarter},
+	{.note = A4,  .duration = T_half},
+	{.note = REST, .duration = T_quarter},
+	{.note = END}
+};
+
 static const struct note_duration *songs[] = {
 	mario_song,
 	funkytown_song,
+	tetris_song,
 };
 
 int buzzer_init() {

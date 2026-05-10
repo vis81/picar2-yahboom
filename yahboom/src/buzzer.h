@@ -9,7 +9,8 @@
 enum buzzer_sound {
 	BUZZER_MARIO,
 	BUZZER_FUNKYTOWN,
-	BUZZER_LAST = BUZZER_FUNKYTOWN
+	BUZZER_TETRIS,
+	BUZZER_LAST = BUZZER_TETRIS
 };
 
 int buzzer_init();
