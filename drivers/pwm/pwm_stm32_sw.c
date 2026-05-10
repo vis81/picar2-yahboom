@@ -43,12 +43,19 @@ LOG_MODULE_REGISTER(pwm_stm32_sw, CONFIG_PWM_LOG_LEVEL);
 #define ARR_INIT(n, attr) \
 	LISTIFY(ARR_LEN(n, attr), ARR_ELEM, (,), n, attr)
 
-#define MAX_GPIOS 4
+/** Maximum number of timer channels : some stm32 soc have 6 else only 4 */
+#if defined(LL_TIM_CHANNEL_CH6)
+#define TIMER_HAS_6CH 1
+#define TIMER_MAX_CH 6u
+#else
+#define TIMER_HAS_6CH 0
+#define TIMER_MAX_CH 4u
+#endif
 
 /** PWM data. */
 struct pwm_stm32_data {
 	uint32_t tim_clk;
-	uint32_t pulse_cycles[MAX_GPIOS];
+	uint32_t pulse_cycles[TIMER_MAX_CH];
 };
 
 /** PWM configuration. */
@@ -58,20 +65,11 @@ struct pwm_stm32_config {
 	uint32_t countermode;
 	struct stm32_pclken pclken;
 	const struct reset_dt_spec reset;
-	struct gpio_dt_spec sw_gpio[MAX_GPIOS];
-	uint32_t channels[MAX_GPIOS];
+	struct gpio_dt_spec sw_gpio[TIMER_MAX_CH];
+	uint32_t channels[TIMER_MAX_CH];
 	uint32_t num_gpios;
 	void (*irq_config_func)(const struct device *dev);
 };
-
-/** Maximum number of timer channels : some stm32 soc have 6 else only 4 */
-#if defined(LL_TIM_CHANNEL_CH6)
-#define TIMER_HAS_6CH 1
-#define TIMER_MAX_CH 6u
-#else
-#define TIMER_HAS_6CH 0
-#define TIMER_MAX_CH 4u
-#endif
 
 /** Channel to LL mapping. */
 static const uint32_t ch2ll[TIMER_MAX_CH] = {
@@ -477,6 +475,13 @@ static void pwm_stm32_irq_config_func_##index(const struct device *dev)	\
 	}
 
 #define PWM_DEVICE_INIT(index)							\
+	BUILD_ASSERT(ARR_LEN(index, gpios) <= TIMER_MAX_CH,			\
+		"st,stm32-pwm-sw: gpios count exceeds TIMER_MAX_CH ("		\
+		STRINGIFY(TIMER_MAX_CH) ")");					\
+	BUILD_ASSERT(ARR_LEN(index, gpios) ==					\
+		     DT_INST_PROP_LEN(index, channels),				\
+		"st,stm32-pwm-sw: gpios and channels must be the same length");\
+										\
 	static struct pwm_stm32_data pwm_stm32_data_##index;			\
 										\
 	IRQ_CONFIG_FUNC(index)							\
