@@ -89,9 +89,22 @@ static int cmd_sys_reboot(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_sys_uptime(const struct shell *sh, size_t argc, char **argv)
+{
+	int64_t ms = k_uptime_get();
+	shell_print(sh, "%lld d %02lld:%02lld:%02lld.%03lld",
+		ms / 86400000,
+		ms / 3600000 % 24,
+		ms / 60000   % 60,
+		ms / 1000    % 60,
+		ms           % 1000);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_sys,
 	SHELL_CMD(bootloader, NULL, "reboot into STM32 ROM bootloader", cmd_sys_bootloader),
 	SHELL_CMD(reboot,     NULL, "reboot the system", cmd_sys_reboot),
+	SHELL_CMD(uptime,     NULL, "print time since boot", cmd_sys_uptime),
 	SHELL_SUBCMD_SET_END
 );
 
