@@ -1,6 +1,19 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <zephyr/dt-bindings/sensor/qdec_stm32.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+/* Added after Zephyr 3.4 — define for older versions */
+#ifndef INPUT_REL_WHEEL
+#define INPUT_REL_WHEEL  0x08
+#endif
+#ifndef INPUT_ABS_RUDDER
+#define INPUT_ABS_RUDDER 0x07
+#endif
+#ifndef INPUT_ABS_GAS
+#define INPUT_ABS_GAS    0x09
+#endif
+#ifndef INPUT_ABS_BRAKE
+#define INPUT_ABS_BRAKE  0x0a
+#endif
 
 / {
 	chosen {

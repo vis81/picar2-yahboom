@@ -10,6 +10,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/drivers/pwm_compat.h>
 #include <zephyr/shell/shell.h>
 #include "buzzer.h"
 

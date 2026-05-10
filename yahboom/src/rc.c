@@ -19,6 +19,7 @@
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>
 #include <zephyr/input/input.h>
+#include <zephyr/input/input_compat.h>
 //#include <unistd.h>
 #include <ctype.h>
 #include <stdlib.h>

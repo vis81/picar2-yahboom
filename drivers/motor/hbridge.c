@@ -11,8 +11,10 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/motor.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/drivers/pwm_compat.h>
 #include <zephyr/logging/log.h>
 #include <zephyr/input/input.h>
+#include <zephyr/input/input_compat.h>
 #include <stdlib.h>
 
 LOG_MODULE_REGISTER(hbridge, CONFIG_MOTOR_LOG_LEVEL);

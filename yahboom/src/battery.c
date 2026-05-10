@@ -10,6 +10,7 @@
 
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/adc.h>
+#include <zephyr/drivers/adc_compat.h>
 #include <zephyr/shell/shell.h>
 //#include "buzzer.h"
 

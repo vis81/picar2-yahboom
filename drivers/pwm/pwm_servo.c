@@ -11,6 +11,7 @@
 #include <zephyr/devicetree.h>
 #include <zephyr/drivers/pwm_servo.h>
 #include <zephyr/drivers/pwm.h>
+#include <zephyr/drivers/pwm_compat.h>
 
 #include <zephyr/logging/log.h>
 
