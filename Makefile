@@ -31,7 +31,8 @@ help:
 	@echo "  make distclean                  — remove build + zephyr_os/ + .west/"
 	@echo ""
 	@echo "Switching Zephyr versions:"
-	@echo "  git checkout <branch> && west update"
+	@echo "  git checkout <branch>"
+	@echo "  source activate.sh && west update"
 	@echo ""
 
 # ── environment check ─────────────────────────────────────────────────────────
