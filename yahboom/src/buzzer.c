@@ -190,33 +190,44 @@ static const char *song_names[] = {
 	"tetris",
 };
 
-int buzzer_init() {
-	if (!pwm_is_ready_dt(&sBuzzer)) {
-			printk("Error: PWM device %s is not ready\n", sBuzzer.dev->name);
-		return -EBUSY;
-	}
-	pwm_set_pulse_dt(&sBuzzer, 0);
-	return 0;
-}
+static K_SEM_DEFINE(play_sem, 0, 1);
+static atomic_t stop_flag;
+static const struct note_duration *pending_song;
+static uint8_t pending_volume;
 
-static int buzzer_play_song(const struct note_duration *song, uint8_t volume) {
+static void buzzer_play_song(const struct note_duration *song, uint8_t volume)
+{
 	pwm_set_pulse_dt(&sBuzzer, 0);
-	for (int i = 0; i < MAX_LEN; i++)
-	{
-		if (song[i].note == END)
-		{
+	for (int i = 0; i < MAX_LEN; i++) {
+		if (atomic_get(&stop_flag) || song[i].note == END) {
 			break;
-		} else if (song[i].note < 10)
-		{
-			// Low frequency notes represent a 'pause'
+		} else if (song[i].note < 10) {
 			pwm_set_pulse_dt(&sBuzzer, 0);
 			k_msleep(song[i].duration);
-		}
-		else
-		{
-			pwm_set_dt(&sBuzzer, PWM_HZ(song[i].note), PWM_HZ((song[i].note)) * volume / 200);
+		} else {
+			pwm_set_dt(&sBuzzer, PWM_HZ(song[i].note),
+				   PWM_HZ(song[i].note) * volume / 200);
 			k_msleep(song[i].duration);
 		}
+	}
+	pwm_set_pulse_dt(&sBuzzer, 0);
+}
+
+static void buzzer_thread_fn(void *p1, void *p2, void *p3)
+{
+	while (1) {
+		k_sem_take(&play_sem, K_FOREVER);
+		atomic_clear(&stop_flag);
+		buzzer_play_song(pending_song, pending_volume);
+	}
+}
+
+K_THREAD_DEFINE(buzzer_tid, 1024, buzzer_thread_fn, NULL, NULL, NULL, 10, 0, 0);
+
+int buzzer_init() {
+	if (!pwm_is_ready_dt(&sBuzzer)) {
+		printk("Error: PWM device %s is not ready\n", sBuzzer.dev->name);
+		return -EBUSY;
 	}
 	pwm_set_pulse_dt(&sBuzzer, 0);
 	return 0;
@@ -225,7 +236,11 @@ static int buzzer_play_song(const struct note_duration *song, uint8_t volume) {
 int buzzer_play(enum buzzer_sound id, uint8_t volume) {
 	if (id > BUZZER_LAST || volume > 100)
 		return -EINVAL;
-	return buzzer_play_song(songs[id], volume);
+	atomic_set(&stop_flag, 1);
+	pending_song   = songs[id];
+	pending_volume = volume;
+	k_sem_give(&play_sem);
+	return 0;
 }
 
 static int cmd_buzzer_play(const struct shell *sh, size_t argc,
