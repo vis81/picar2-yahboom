@@ -160,6 +160,74 @@ ZTEST(pwm_stm32_sw, test_full_duty_holds_gpio_high)
 		"GPIO must be HIGH for 100%% duty cycle");
 }
 
+ZTEST(pwm_stm32_sw, test_period_zero_disables_output)
+{
+	/*
+	 * period_cycles = 0 is the "disable channel" path.  After running at
+	 * 50 % duty (so the UPDATE interrupt is armed and pulse_cycles != 0),
+	 * calling set_cycles with period = 0 must:
+	 *   - drive GPIO LOW immediately
+	 *   - zero pulse_cycles so the UPDATE ISR no longer re-asserts HIGH
+	 *
+	 * Wait 50 ms (> 3 full periods at ~14 ms each) to confirm the GPIO
+	 * stays LOW and is not driven HIGH by a stale UPDATE interrupt.
+	 */
+	zassert_ok(pwm_set_cycles(pwm_dev, PWM_CHAN, 1000, 500, 0));
+	k_sleep(K_MSEC(30));
+
+	zassert_ok(pwm_set_cycles(pwm_dev, PWM_CHAN, 0, 0, 0));
+	k_sleep(K_MSEC(50));
+
+	zassert_equal(0, gpio_read(),
+		"GPIO must be LOW and stay LOW after period=0 disable");
+}
+
+ZTEST(pwm_stm32_sw, test_zero_duty_gpio_stays_low_across_periods)
+{
+	/*
+	 * Regression for the UPDATE ISR bug: after switching to 0 % duty the
+	 * GPIO must remain LOW across many periods, not be re-asserted HIGH by
+	 * the UPDATE interrupt (which fired for the previous non-zero duty).
+	 *
+	 * Flow: arm at 50 % → switch to 0 % → wait 50 ms (~3.6 periods).
+	 * If pulse_cycles were not zeroed the ISR would set GPIO HIGH on every
+	 * UPDATE event and the final read would be non-deterministically HIGH.
+	 */
+	zassert_ok(pwm_set_cycles(pwm_dev, PWM_CHAN, 1000, 500, 0));
+	k_sleep(K_MSEC(30));
+
+	zassert_ok(pwm_set_cycles(pwm_dev, PWM_CHAN, 1000, 0, 0));
+	k_sleep(K_MSEC(50));
+
+	zassert_equal(0, gpio_read(),
+		"GPIO driven HIGH by UPDATE ISR despite 0%% duty (regression)");
+}
+
+ZTEST(pwm_stm32_sw, test_duty_update_while_running)
+{
+	/*
+	 * Exercises the "channel already enabled" else-branch in set_cycles,
+	 * which is the normal runtime path for e.g. changing servo position.
+	 *
+	 * Sequence:
+	 *   50 %  →  confirm waveform is running (ISR ordering check)
+	 *   100 % →  GPIO must be HIGH after 35 ms (≥ 2 UPDATE events)
+	 *   0 %   →  GPIO must be LOW  after 20 ms
+	 */
+	zassert_ok(pwm_set_cycles(pwm_dev, PWM_CHAN, 1000, 500, 0));
+	k_sleep(K_MSEC(30));
+
+	zassert_ok(pwm_set_cycles(pwm_dev, PWM_CHAN, 1000, 1000, 0));
+	k_sleep(K_MSEC(35));
+	zassert_equal(1, gpio_read(),
+		"GPIO must be HIGH after updating duty to 100%%");
+
+	zassert_ok(pwm_set_cycles(pwm_dev, PWM_CHAN, 1000, 0, 0));
+	k_sleep(K_MSEC(20));
+	zassert_equal(0, gpio_read(),
+		"GPIO must be LOW after updating duty to 0%%");
+}
+
 ZTEST(pwm_stm32_sw, test_isr_ordering_gpio_returns_low)
 {
 	/*
