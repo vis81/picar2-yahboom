@@ -24,7 +24,6 @@ extern "C" {
 #define SERVO_NEUTRAL_VALUE	 50
 #define SERVO_MAX_VALUE      100
 
-typedef int (*servo_init_t) (const struct device *dev);
 typedef int (*servo_write_t)(const struct device *dev, uint8_t  value);
 typedef int (*servo_read_t) (const struct device *dev, uint8_t *value);
 
@@ -34,26 +33,9 @@ typedef int (*servo_read_t) (const struct device *dev, uint8_t *value);
  * This is the API all servo drivers must expose.
  */
 struct servo_driver_api {
-	servo_init_t  init;
 	servo_write_t write;
 	servo_read_t  read;
 };
-
-static inline int servo_init(const struct device *dev)
-{
-	struct servo_driver_api *api;
-
-	if (dev == NULL) {
-		return -EINVAL;
-	}
-
-	api = (struct servo_driver_api*)dev->api;
-
-	if (api->init == NULL) {
-		return -ENOTSUP;
-	}
-	return api->init(dev);
-}
 
 static inline int servo_write(const struct device *dev, uint8_t value)
 {

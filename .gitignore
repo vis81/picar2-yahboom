@@ -11,3 +11,11 @@
 /twister-out*
 
 __pycache__/
+
+# West-managed deps and SDK — all under one directory (T1 topology).
+# Note: /zephyr/ is NOT listed — it contains our own module.yml (tracked).
+/zephyr_os/
+/.west/
+
+# Legacy isolated workspaces
+/ws/

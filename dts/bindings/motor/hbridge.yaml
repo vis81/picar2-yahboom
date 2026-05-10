@@ -22,3 +22,7 @@ properties:
   counts-per-rev:
     type: int
     required: false
+
+  pid-gains:
+    type: array
+    required: false

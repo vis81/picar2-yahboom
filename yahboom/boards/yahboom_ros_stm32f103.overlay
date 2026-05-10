@@ -1,16 +1,65 @@
 /* SPDX-License-Identifier: Apache-2.0 */
 #include <zephyr/dt-bindings/sensor/qdec_stm32.h>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+/* Added after Zephyr 3.4 — define for older versions */
+#ifndef INPUT_REL_WHEEL
+#define INPUT_REL_WHEEL  0x08
+#endif
+#ifndef INPUT_ABS_RUDDER
+#define INPUT_ABS_RUDDER 0x07
+#endif
+#ifndef INPUT_ABS_GAS
+#define INPUT_ABS_GAS    0x09
+#endif
+#ifndef INPUT_ABS_BRAKE
+#define INPUT_ABS_BRAKE  0x0a
+#endif
 
 / {
+	chosen {
+		zephyr,uart-pipe = &usart1;
+	};
+
     servo0: nrf-servo0 {
         compatible = "pwm-servo";
         pwms = <&pwm_sw_t3 1 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+        init_value = <50>;
+        min_pulse_us = <885>;
+        max_pulse_us = <2025>;
+        status = "okay";
+    };
+    
+    servo1: servo1 {
+        compatible = "pwm-servo";
+        pwms = <&pwm_sw_t3 2 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
         init_value = <50>;
         min_pulse_us = <600>;
         max_pulse_us = <2500>;
         status = "okay";
     };
+
+    servo2: servo2 {
+        compatible = "pwm-servo";
+        pwms = <&pwm_sw_t3 3 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+        init_value = <50>;
+        min_pulse_us = <600>;
+        max_pulse_us = <2500>;
+        status = "okay";
+    };
+
+	pwmbuzzer {
+		compatible = "pwm-leds";
+		status = "okay";
+
+		buzzer: buzzer_pwm {
+			pwms = <&pwm_sw_t1 1 PWM_HZ(880) PWM_POLARITY_NORMAL>;
+		};
+	};
+
+	zephyr,user {
+		/* adjust channel number according to pinmux in board.dts */
+		io-channels = <&adc1 14>;
+	};
 
 	motor_r: motor_r {
         compatible = "hbridge";
@@ -18,6 +67,7 @@
         counts-per-rev = <824>;
         pwms = <&pwm_t8_m1_m2 1 PWM_MSEC(1) PWM_POLARITY_NORMAL>,
 				<&pwm_t8_m1_m2 2 PWM_MSEC(1) PWM_POLARITY_NORMAL>;
+		pid-gains = <50 0 240 100>;
         status = "okay";
     };
 
@@ -27,9 +77,24 @@
         counts-per-rev = <824>;
         pwms = <&pwm_t8_m1_m2 4 PWM_MSEC(1) PWM_POLARITY_NORMAL>,
 				<&pwm_t8_m1_m2 3 PWM_MSEC(1) PWM_POLARITY_NORMAL>;
+		pid-gains = <50 0 240 100>;
         status = "okay";
     };
 
+};
+
+&timers1 {
+	st,prescaler = <100>;
+	status = "okay";
+
+	pwm_sw_t1: sw_pwm {
+		compatible = "st,stm32-pwm-sw";
+		status = "okay";
+		label = "buzzer_pwm";
+		gpios = <&gpioc 5 GPIO_ACTIVE_HIGH>;
+		channels = <1>;
+		#pwm-cells = <3>;
+	};
 };
 
 &timers2 {
@@ -91,14 +156,8 @@
 };
 
 &usart2 {
-	current-speed = <100000>;
-	parity = "even";
-	stop-bits = "2";
-	data-bits = <8>;
 	status = "okay";
     rc: sbus {
-        compatible = "sbus-receiver";
-        label = "sbus0";
         status = "okay";
         ch_1 {
             channel = <1>;
@@ -112,5 +171,21 @@
             channel = <3>;
             zephyr,axis = <INPUT_ABS_BRAKE>;
         };
+        ch_6 {
+            channel = <6>;
+            zephyr,axis = <INPUT_BTN_MODE>;
+        };
     };
+};
+
+&adc1 {
+	status = "okay";
+};
+
+/* MPU9250 port*/
+&i2c3 {
+	status = "okay";
+	mpu9250@69 {
+			status = "okay";
+	};
 };
