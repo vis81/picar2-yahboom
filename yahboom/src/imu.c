@@ -60,7 +60,7 @@ static int cmd_imu_raw(const struct shell *sh, size_t argc, char **argv)
 
 static int cmd_imu_read(const struct shell *sh, size_t argc, char **argv)
 {
-	struct sensor_value accel[3], gyro[3], temp;
+	struct sensor_value accel[3], gyro[3], magn[3], temp;
 	int ret;
 
 	ret = sensor_sample_fetch(imu);
@@ -72,6 +72,7 @@ static int cmd_imu_read(const struct shell *sh, size_t argc, char **argv)
 	sensor_channel_get(imu, SENSOR_CHAN_ACCEL_XYZ, accel);
 	sensor_channel_get(imu, SENSOR_CHAN_GYRO_XYZ,  gyro);
 	sensor_channel_get(imu, SENSOR_CHAN_DIE_TEMP,  &temp);
+	sensor_channel_get(imu, SENSOR_CHAN_MAGN_XYZ,  magn);
 
 	shell_print(sh, "accel  x: %d.%06d  y: %d.%06d  z: %d.%06d m/s²",
 		accel[0].val1, abs(accel[0].val2),
@@ -81,6 +82,10 @@ static int cmd_imu_read(const struct shell *sh, size_t argc, char **argv)
 		gyro[0].val1, abs(gyro[0].val2),
 		gyro[1].val1, abs(gyro[1].val2),
 		gyro[2].val1, abs(gyro[2].val2));
+	shell_print(sh, "magn   x: %d.%06d  y: %d.%06d  z: %d.%06d uT",
+		magn[0].val1, abs(magn[0].val2),
+		magn[1].val1, abs(magn[1].val2),
+		magn[2].val1, abs(magn[2].val2));
 	shell_print(sh, "temp   %d.%02d °C",
 		temp.val1, abs(temp.val2) / 10000);
 
