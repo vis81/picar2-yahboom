@@ -1,9 +1,25 @@
 /*
  * Copyright (c) 2016 Linaro Limited.
  * Copyright (c) 2020 Teslabs Engineering S.L.
- * Copyright (c) 2023 Nobleo Technology
+ * Copyright (c) 2024 Valentyn Shevchenko
  *
  * SPDX-License-Identifier: Apache-2.0
+ */
+
+/*
+ * Software PWM driver for STM32 — uses a hardware timer for timing but drives
+ * arbitrary GPIO pins rather than the timer's dedicated output pins.
+ *
+ * Mechanism: the timer runs freely and generates two interrupt types:
+ *   UPDATE (UEV) — fires at the start of each period → assert all active GPIOs HIGH
+ *   CCx           — fires when the counter reaches CCR  → drive the matching GPIO LOW
+ *
+ * This decouples PWM output from pin-mux constraints: any GPIO can carry PWM,
+ * not only the pins wired to the timer's AF channels.  The trade-off is that
+ * timing accuracy depends on ISR latency.
+ *
+ * All channels on one driver instance share a single timer and therefore a
+ * single period.  Changing the period through one channel affects all channels.
  */
 
 #define DT_DRV_COMPAT st_stm32_pwm_sw
@@ -52,13 +68,13 @@ LOG_MODULE_REGISTER(pwm_stm32_sw, CONFIG_PWM_LOG_LEVEL);
 #define TIMER_MAX_CH 4u
 #endif
 
-/** PWM data. */
 struct pwm_stm32_data {
 	uint32_t tim_clk;
+	/* Last pulse width written per channel (adjusted timer ticks).
+	 * Zero means the channel is idle; the ISR skips asserting HIGH for it. */
 	uint32_t pulse_cycles[TIMER_MAX_CH];
 };
 
-/** PWM configuration. */
 struct pwm_stm32_config {
 	TIM_TypeDef *timer;
 	uint32_t prescaler;
@@ -71,7 +87,6 @@ struct pwm_stm32_config {
 	void (*irq_config_func)(const struct device *dev);
 };
 
-/** Channel to LL mapping. */
 static const uint32_t ch2ll[TIMER_MAX_CH] = {
 	LL_TIM_CHANNEL_CH1, LL_TIM_CHANNEL_CH2,
 	LL_TIM_CHANNEL_CH3, LL_TIM_CHANNEL_CH4,
@@ -80,7 +95,6 @@ static const uint32_t ch2ll[TIMER_MAX_CH] = {
 #endif
 };
 
-/** Channel to compare set function mapping. */
 static void (*const set_timer_compare[TIMER_MAX_CH])(TIM_TypeDef *, uint32_t) = {
 	LL_TIM_OC_SetCompareCH1, LL_TIM_OC_SetCompareCH2,
 	LL_TIM_OC_SetCompareCH3, LL_TIM_OC_SetCompareCH4,
@@ -108,15 +122,12 @@ static uint32_t (*const is_cc_enabled[])(const TIM_TypeDef *) = {
 	LL_TIM_IsEnabledIT_CC3, LL_TIM_IsEnabledIT_CC4
 };
 
-/** SR flag for each CC channel (index = channel number; [0] unused). */
+/* SR flag for each CC channel (1-based index; [0] unused). */
 static const uint32_t chan2srbit[] = {
 	0,
 	TIM_SR_CC1IF, TIM_SR_CC2IF, TIM_SR_CC3IF, TIM_SR_CC4IF,
 };
 
-/**
- * @brief  Check if LL counter mode is center-aligned.
- */
 static inline bool is_center_aligned(const uint32_t ll_countermode)
 {
 	return ((ll_countermode == LL_TIM_COUNTERMODE_CENTER_DOWN) ||
@@ -124,9 +135,6 @@ static inline bool is_center_aligned(const uint32_t ll_countermode)
 		(ll_countermode == LL_TIM_COUNTERMODE_CENTER_UP_DOWN));
 }
 
-/**
- * Obtain timer clock speed.
- */
 static int get_tim_clk(const struct stm32_pclken *pclken, uint32_t *tim_clk)
 {
 	int r;
@@ -209,6 +217,8 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 	struct pwm_stm32_data *data = dev->data;
 	int gpio_idx;
 
+	/* Polarity flags are not implemented: the GPIO is always asserted HIGH
+	 * on UPDATE (period start) and LOW on CC (compare match). */
 	ARG_UNUSED(flags);
 
 	for (gpio_idx = 0; gpio_idx < cfg->num_gpios; gpio_idx++) {
@@ -271,6 +281,9 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 		LL_TIM_OC_InitTypeDef oc_init;
 
 		LL_TIM_OC_StructInit(&oc_init);
+		/* Configure the OC channel in PWM1 mode to arm the CC interrupt.
+		 * The timer's physical output pin is not used — we drive GPIOs
+		 * directly from the ISR. */
 		oc_init.OCMode = LL_TIM_OCMODE_PWM1;
 		oc_init.OCState = LL_TIM_OCSTATE_ENABLE;
 		oc_init.CompareValue = pulse_cycles;
@@ -283,6 +296,8 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 		LL_TIM_EnableARRPreload(cfg->timer);
 		LL_TIM_OC_EnablePreload(cfg->timer, ll_channel);
 		LL_TIM_SetAutoReload(cfg->timer, period_cycles);
+		/* Force an immediate update event to transfer CCR/ARR from their
+		 * preload registers so the very first period has correct timing. */
 		LL_TIM_GenerateEvent_UPDATE(cfg->timer);
 	} else {
 		set_timer_compare[channel - 1u](cfg->timer, pulse_cycles);
@@ -352,6 +367,8 @@ static void pwm_stm32_isr(const struct device *dev)
 
 		if (sr & sr_bit) {
 			gpio_pin_set_dt(&cfg->sw_gpio[i], 0);
+			/* STM32 SR flags are RC_W0: write 0 to clear, write 1
+			 * has no effect.  ~sr_bit clears only this flag. */
 			WRITE_REG(cfg->timer->SR, ~sr_bit);
 		}
 	}
@@ -401,10 +418,8 @@ static int pwm_stm32_init(const struct device *dev)
 		return r;
 	}
 
-	/* Reset timer to default state using RCC */
 	(void)reset_line_toggle_dt(&cfg->reset);
 
-	/* initialize timer */
 	LL_TIM_StructInit(&init);
 
 	init.Prescaler = cfg->prescaler;
@@ -418,7 +433,8 @@ static int pwm_stm32_init(const struct device *dev)
 	}
 
 #if !defined(CONFIG_SOC_SERIES_STM32L0X) && !defined(CONFIG_SOC_SERIES_STM32L1X)
-	/* enable outputs and counter */
+	/* Enable main output for advanced timers that have a break circuit
+	 * (e.g. TIM1, TIM8); a no-op for general-purpose timers. */
 	if (IS_TIM_BREAK_INSTANCE(cfg->timer)) {
 		LL_TIM_EnableAllOutputs(cfg->timer);
 	}
