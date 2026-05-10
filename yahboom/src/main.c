@@ -81,8 +81,17 @@ static int cmd_sys_bootloader(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_sys_reboot(const struct shell *sh, size_t argc, char **argv)
+{
+	shell_print(sh, "rebooting");
+	k_msleep(50);
+	sys_reboot(SYS_REBOOT_COLD);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_sys,
-	SHELL_CMD(bootloader, NULL, "reboot into bootloader", cmd_sys_bootloader),
+	SHELL_CMD(bootloader, NULL, "reboot into STM32 ROM bootloader", cmd_sys_bootloader),
+	SHELL_CMD(reboot,     NULL, "reboot the system", cmd_sys_reboot),
 	SHELL_SUBCMD_SET_END
 );
 
