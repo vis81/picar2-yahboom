@@ -18,7 +18,7 @@ SDK_TOOLCHAIN="${SDK_TOOLCHAIN:-arm-zephyr-eabi}"
 
 # ── SDK version from sdk-version.txt ────────────────────────────────────────
 SDK_VERSION=$(tr -d '[:space:]' < "$REPO/sdk-version.txt")
-SDK_DIR="$REPO/zephyr_os/sdks/zephyr-sdk-${SDK_VERSION}"
+SDK_DIR="$REPO/zephyr_os/sdk"
 
 # ── venv ─────────────────────────────────────────────────────────────────────
 if [[ ! -d "$REPO/.venv" ]]; then
@@ -67,11 +67,11 @@ fi
 # ── SDK ──────────────────────────────────────────────────────────────────────
 if [[ ! -d "$SDK_DIR" ]]; then
     echo "  Downloading Zephyr SDK ${SDK_VERSION} ..."
-    mkdir -p "$REPO/zephyr_os/sdks"
     ARCHIVE="zephyr-sdk-${SDK_VERSION}_${SDK_PLATFORM}_minimal.tar.xz"
     URL="https://github.com/zephyrproject-rtos/sdk-ng/releases/download/v${SDK_VERSION}/${ARCHIVE}"
     wget -q --show-progress -O "/tmp/${ARCHIVE}" "$URL"
-    tar -xf "/tmp/${ARCHIVE}" -C "$REPO/zephyr_os/sdks"
+    tar -xf "/tmp/${ARCHIVE}" -C "/tmp"
+    mv "/tmp/zephyr-sdk-${SDK_VERSION}" "$SDK_DIR"
     "$SDK_DIR/setup.sh" -t "$SDK_TOOLCHAIN" -c
     echo "  SDK installed at $SDK_DIR"
 fi
