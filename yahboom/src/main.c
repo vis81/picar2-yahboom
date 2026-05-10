@@ -110,6 +110,7 @@ static int cmd_sys_halt(const struct shell *sh, size_t argc, char **argv)
 {
 	shell_print(sh, "entering standby — reset pin or power cycle to wake");
 	k_msleep(50);
+	imu_shutdown();
 	power_standby();
 	return 0;
 }

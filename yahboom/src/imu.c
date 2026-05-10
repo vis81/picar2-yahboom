@@ -17,6 +17,8 @@ LOG_MODULE_REGISTER(imu, LOG_LEVEL_DBG);
 #define MPU9250_I2C_ADDR     0x69
 #define MPU9250_REG_WHO_AM_I 0x75
 #define MPU9250_REG_DATA     0x3B  /* burst: accel(6) temp(2) gyro(6) */
+#define MPU9250_REG_PWR_MGMT_1 0x6B
+#define MPU9250_PWR_SLEEP    BIT(6)
 
 #define CAL_DURATION_MS  15000
 #define CAL_SAMPLE_MS    50
@@ -47,6 +49,12 @@ static void apply_mag_cal(struct sensor_value *m)
 		m[i].val1 = (int32_t)(v / 1000000);
 		m[i].val2 = (int32_t)(v % 1000000);
 	}
+}
+
+void imu_shutdown(void)
+{
+	i2c_reg_write_byte(i2c_bus, MPU9250_I2C_ADDR,
+			   MPU9250_REG_PWR_MGMT_1, MPU9250_PWR_SLEEP);
 }
 
 int imu_init(void)

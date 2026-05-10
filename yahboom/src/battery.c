@@ -12,6 +12,7 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/adc_compat.h>
 #include <zephyr/shell/shell.h>
+#include "imu.h"
 #include "power.h"
 
 #define ADC2VBAT(x)  ((x) * 4145 / 1000)
@@ -78,6 +79,7 @@ static void battery_mon_func(struct k_work *work)
 	}
 	if (val < VBAT_CRIT_MV) {
 		printk("CRITICAL: battery %d mV — entering standby\n", val);
+		imu_shutdown();
 		power_standby();
 		return;
 	}

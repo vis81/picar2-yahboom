@@ -7,5 +7,6 @@
 #define _IMU_H_
 
 int imu_init(void);
+void imu_shutdown(void);
 
 #endif /* _IMU_H_ */
