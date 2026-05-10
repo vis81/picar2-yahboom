@@ -91,6 +91,24 @@ static int cmd_sys_reboot(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_sys_halt(const struct shell *sh, size_t argc, char **argv)
+{
+	shell_print(sh, "entering standby — reset pin or power cycle to wake");
+	k_msleep(50);
+
+	__disable_irq();
+	SysTick->CTRL = 0;
+
+	/* STM32F103 STANDBY: all I/O tri-stated, ~2 µA */
+	RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+	PWR->CR |= PWR_CR_CWUF;            /* clear wake-up flag */
+	PWR->CR |= PWR_CR_PDDS;            /* standby (not stop) on deep sleep */
+	SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+	__DSB();
+	__WFI();
+	return 0;
+}
+
 static int cmd_sys_uptime(const struct shell *sh, size_t argc, char **argv)
 {
 	int64_t ms = k_uptime_get();
@@ -113,6 +131,7 @@ static int cmd_sys_version(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_sys,
 	SHELL_CMD(bootloader, NULL, "reboot into STM32 ROM bootloader", cmd_sys_bootloader),
+	SHELL_CMD(halt,       NULL, "enter STANDBY (~2 µA); reset pin or power cycle to wake", cmd_sys_halt),
 	SHELL_CMD(reboot,     NULL, "reboot the system", cmd_sys_reboot),
 	SHELL_CMD(uptime,     NULL, "print time since boot", cmd_sys_uptime),
 	SHELL_CMD(version,    NULL, "print kernel version", cmd_sys_version),
