@@ -12,6 +12,12 @@
 
 __pycache__/
 
-# Zephyr workspaces and SDKs (managed by setup-workspace.sh / make new)
-/ws/
+# West-managed directories (T1 topology — workspace root = repo root)
+/zephyr/
+/modules/
+/bootloader/
+/.west/
+
+# SDKs and legacy isolated workspaces
 /sdks/
+/ws/

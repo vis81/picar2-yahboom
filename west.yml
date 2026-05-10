@@ -1,9 +1,8 @@
-# Copyright (c) 2021 Nordic Semiconductor ASA
 # SPDX-License-Identifier: Apache-2.0
 
 manifest:
-  self:
-    west-commands: scripts/west-commands.yml
+  defaults:
+    remote: zephyrproject-rtos
 
   remotes:
     - name: zephyrproject-rtos
@@ -11,12 +10,18 @@ manifest:
 
   projects:
     - name: zephyr
-      remote: zephyrproject-rtos
       revision: v3.5.0
       import:
-        # By using name-allowlist we can clone only the modules that are
-        # strictly needed by the application.
         name-allowlist:
-          - cmsis      # required by the ARM port
-          - hal_stm32  # required by the nucleo_f302r8 board (STM32 based)
+          - cmsis
+          - hal_stm32
           - mcuboot
+
+  self:
+    path: .
+    west-commands: scripts/west-commands.yml
+
+  # Non-west keys — read by activate.sh to select the matching SDK.
+  extras:
+    zephyr-sdk-version: "0.16.9"
+    zephyr-sdk-toolchain: "arm-zephyr-eabi"
