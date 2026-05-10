@@ -146,8 +146,9 @@ ZTEST(pwm_stm32_sw, test_full_duty_holds_gpio_high)
 	 *   ARR  = period - 1 = 999
 	 *   CCR1 = pulse      = 1000   (> ARR → CC event never fires)
 	 *
-	 * The UPDATE interrupt sets GPIO HIGH every period; since the CC
-	 * event is unreachable, GPIO stays HIGH indefinitely.
+	 * The driver detects pulse_cycles > period_cycles as 100 % duty,
+	 * immediately asserts GPIO HIGH, and does NOT arm CC.  UPDATE fires
+	 * every period and re-asserts HIGH (pulse_cycles != 0 guard in ISR).
 	 *
 	 * Period ≈ 1000 / 71928 Hz ≈ 13.9 ms.  Waiting 35 ms guarantees
 	 * at least two UPDATE events have fired.

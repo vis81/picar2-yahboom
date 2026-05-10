@@ -419,11 +419,17 @@ static int pwm_stm32_set_cycles(const struct device *dev, uint32_t channel,
 		LL_TIM_SetAutoReload(cfg->timer, period_cycles);
 	}
     data->pulse_cycles[gpio_idx] = pulse_cycles;
-    if (pulse_cycles) {
-		enable_capture_interrupt[channel - 1](cfg->timer);
+    if (pulse_cycles == 0u) {
+		gpio_pin_set_dt(&cfg->sw_gpio[gpio_idx], 0);
+	} else if (pulse_cycles > period_cycles) {
+		/* 100 % duty: CCR > ARR, CC event unreachable.  Assert HIGH now
+		 * instead of arming CC, which would race against the stale
+		 * CCR_active=0 value and drive GPIO LOW on the first UEV. */
+		gpio_pin_set_dt(&cfg->sw_gpio[gpio_idx], 1);
 		LL_TIM_EnableIT_UPDATE(cfg->timer);
 	} else {
-		gpio_pin_set_dt(&cfg->sw_gpio[gpio_idx], 0);
+		enable_capture_interrupt[channel - 1](cfg->timer);
+		LL_TIM_EnableIT_UPDATE(cfg->timer);
 	}
 	return 0;
 }
@@ -451,8 +457,8 @@ static void pwm_stm32_isr(const struct device *dev)
      * (ISR delayed past pulse end), the final GPIO state is LOW (CC wins). */
     if (sr & TIM_SR_UIF) {
         for (int i = 0; i < cfg->num_gpios; i++) {
-            int channel = cfg->channels[i];
-            if (!is_it_enabled[channel - 1](cfg->timer))
+            /* pulse_cycles == 0 means idle (GPIO should stay LOW). */
+            if (!data->pulse_cycles[i])
                 continue;
             gpio_pin_set_dt(&cfg->sw_gpio[i], 1);
         }
