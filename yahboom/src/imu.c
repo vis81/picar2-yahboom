@@ -6,15 +6,33 @@
 #include <zephyr/device.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
+#include <zephyr/kernel.h>
 #include <zephyr/shell/shell.h>
 #include "imu.h"
 
-#define MPU9250_I2C_ADDR   0x69
+#define MPU9250_I2C_ADDR     0x69
 #define MPU9250_REG_WHO_AM_I 0x75
-#define MPU9250_REG_DATA   0x3B  /* burst: accel(6) temp(2) gyro(6) */
+#define MPU9250_REG_DATA     0x3B  /* burst: accel(6) temp(2) gyro(6) */
 
-static const struct device *imu    = DEVICE_DT_GET(DT_NODELABEL(mpu9250));
+#define CAL_DURATION_MS  15000
+#define CAL_SAMPLE_MS    50
+
+static const struct device *imu     = DEVICE_DT_GET(DT_NODELABEL(mpu9250));
 static const struct device *i2c_bus = DEVICE_DT_GET(DT_NODELABEL(i2c3));
+
+/* Hard-iron offsets in sensor_value micro-units (µT × 1e6); zero = uncalibrated */
+static int64_t mag_cal[3];
+
+static void apply_mag_cal(struct sensor_value *m)
+{
+	for (int i = 0; i < 3; i++) {
+		int64_t v = (int64_t)m[i].val1 * 1000000LL + m[i].val2;
+
+		v -= mag_cal[i];
+		m[i].val1 = (int32_t)(v / 1000000);
+		m[i].val2 = (int32_t)(v % 1000000);
+	}
+}
 
 int imu_init(void)
 {
@@ -73,6 +91,7 @@ static int cmd_imu_read(const struct shell *sh, size_t argc, char **argv)
 	sensor_channel_get(imu, SENSOR_CHAN_GYRO_XYZ,  gyro);
 	sensor_channel_get(imu, SENSOR_CHAN_DIE_TEMP,  &temp);
 	sensor_channel_get(imu, SENSOR_CHAN_MAGN_XYZ,  magn);
+	apply_mag_cal(magn);
 
 	shell_print(sh, "accel  x: %d.%06d  y: %d.%06d  z: %d.%06d m/s²",
 		accel[0].val1, abs(accel[0].val2),
@@ -92,10 +111,94 @@ static int cmd_imu_read(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+/* ── Calibration ─────────────────────────────────────────────────────────── */
+
+static int cmd_imu_cal_start(const struct shell *sh, size_t argc, char **argv)
+{
+	struct sensor_value magn[3];
+	int64_t mn[3], mx[3];
+	bool first = true;
+	int prev_sec = -1;
+
+	shell_print(sh, "Rotate board in all directions for %d seconds...",
+		    CAL_DURATION_MS / 1000);
+
+	int64_t end = k_uptime_get() + CAL_DURATION_MS;
+
+	while (k_uptime_get() < end) {
+		int sec = (int)((end - k_uptime_get() + 999) / 1000);
+
+		if (sec != prev_sec) {
+			shell_print(sh, "%d...", sec);
+			prev_sec = sec;
+		}
+
+		if (sensor_sample_fetch(imu) == 0 &&
+		    sensor_channel_get(imu, SENSOR_CHAN_MAGN_XYZ, magn) == 0) {
+			for (int i = 0; i < 3; i++) {
+				int64_t v = (int64_t)magn[i].val1 * 1000000LL + magn[i].val2;
+
+				if (first) {
+					mn[i] = mx[i] = v;
+				} else {
+					if (v < mn[i]) mn[i] = v;
+					if (v > mx[i]) mx[i] = v;
+				}
+			}
+			first = false;
+		}
+
+		k_msleep(CAL_SAMPLE_MS);
+	}
+
+	if (first) {
+		shell_error(sh, "no samples collected");
+		return -EIO;
+	}
+
+	for (int i = 0; i < 3; i++) {
+		mag_cal[i] = (mn[i] + mx[i]) / 2;
+	}
+
+	shell_print(sh, "done.  offsets  x: %d.%06d  y: %d.%06d  z: %d.%06d uT",
+		(int32_t)(mag_cal[0] / 1000000), (int32_t)abs(mag_cal[0] % 1000000),
+		(int32_t)(mag_cal[1] / 1000000), (int32_t)abs(mag_cal[1] % 1000000),
+		(int32_t)(mag_cal[2] / 1000000), (int32_t)abs(mag_cal[2] % 1000000));
+	return 0;
+}
+
+static int cmd_imu_cal_show(const struct shell *sh, size_t argc, char **argv)
+{
+	if (mag_cal[0] == 0 && mag_cal[1] == 0 && mag_cal[2] == 0) {
+		shell_print(sh, "not calibrated");
+		return 0;
+	}
+	shell_print(sh, "offsets  x: %d.%06d  y: %d.%06d  z: %d.%06d uT",
+		(int32_t)(mag_cal[0] / 1000000), (int32_t)abs(mag_cal[0] % 1000000),
+		(int32_t)(mag_cal[1] / 1000000), (int32_t)abs(mag_cal[1] % 1000000),
+		(int32_t)(mag_cal[2] / 1000000), (int32_t)abs(mag_cal[2] % 1000000));
+	return 0;
+}
+
+static int cmd_imu_cal_reset(const struct shell *sh, size_t argc, char **argv)
+{
+	mag_cal[0] = mag_cal[1] = mag_cal[2] = 0;
+	shell_print(sh, "calibration cleared");
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal,
+	SHELL_CMD(start, NULL, "Collect hard-iron offsets (rotate board for 15 s)", cmd_imu_cal_start),
+	SHELL_CMD(show,  NULL, "Print current offsets", cmd_imu_cal_show),
+	SHELL_CMD(reset, NULL, "Clear calibration", cmd_imu_cal_reset),
+	SHELL_SUBCMD_SET_END
+);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu,
-	SHELL_CMD(read,   NULL, "Read accel, gyro and temperature", cmd_imu_read),
+	SHELL_CMD(read,   NULL, "Read accel, gyro, magn and temperature", cmd_imu_read),
 	SHELL_CMD(raw,    NULL, "Dump raw 14-byte data burst", cmd_imu_raw),
 	SHELL_CMD(whoami, NULL, "Print WHO_AM_I register", cmd_imu_whoami),
+	SHELL_CMD(cal,    &sub_imu_cal, "Magnetometer calibration", NULL),
 	SHELL_SUBCMD_SET_END
 );
 
