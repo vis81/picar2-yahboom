@@ -182,10 +182,10 @@
 	status = "okay";
 };
 
-/* MPU9250 port*/
+/* MPU9250 on bit-bang I2C3 (PB13=SCL, PB15=SDA) */
 &i2c3 {
 	status = "okay";
-	mpu9250@69 {
-			status = "okay";
+	mpu9250: mpu9250@69 {
+		status = "okay";
 	};
 };
