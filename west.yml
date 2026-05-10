@@ -11,12 +11,13 @@ manifest:
   projects:
     - name: zephyr
       revision: v3.5.0
-      path: deps/zephyr
+      path: zephyr_os/zephyr
       import:
         name-allowlist:
           - cmsis
           - hal_stm32
           - mcuboot
+        path-prefix: zephyr_os   # redirects all imported modules under zephyr_os/
 
   self:
     path: .

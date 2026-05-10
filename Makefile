@@ -56,7 +56,7 @@ $(APP_DIR): check-env
 
 mcuboot: check-env
 	west build -p \
-		-s bootloader/mcuboot/boot/zephyr \
+		-s zephyr_os/bootloader/mcuboot/boot/zephyr \
 		-d build/mcuboot \
 		-b $(BOARD) \
 		-- \
@@ -74,7 +74,7 @@ app-signed: check-env
 		-b $(BOARD) \
 		-- \
 		-DCONFIG_BOOTLOADER_MCUBOOT=y \
-		-DCONFIG_MCUBOOT_SIGNATURE_KEY_FILE=\"bootloader/mcuboot/root-rsa-2048.pem\"
+		-DCONFIG_MCUBOOT_SIGNATURE_KEY_FILE=\"zephyr_os/bootloader/mcuboot/root-rsa-2048.pem\"
 
 flash: check-env
 	west flash
