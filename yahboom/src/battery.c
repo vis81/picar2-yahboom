@@ -16,11 +16,13 @@
 
 #define ADC2VBAT(x)  ((x) * 4145 / 1000)
 
-/* 3S LiPo voltage range and thresholds */
-#define VBAT_MAX_MV  12600   /* 4.2 V/cell × 3 — fully charged */
-#define VBAT_MIN_MV   9900   /* 3.3 V/cell × 3 — practical empty */
-#define VBAT_LOW_MV  10500   /* 3.5 V/cell × 3 — warn threshold  */
-#define VBAT_CRIT_MV 10200   /* 3.4 V/cell × 3 — halt threshold  */
+/* Set to 3 for 3S or 4 for 4S LiPo */
+#define VBAT_CELLS    3
+
+#define VBAT_MAX_MV  (4200 * VBAT_CELLS)  /* 4.2 V/cell — fully charged  */
+#define VBAT_LOW_MV  (3500 * VBAT_CELLS)  /* 3.5 V/cell — warn threshold */
+#define VBAT_CRIT_MV (3400 * VBAT_CELLS)  /* 3.4 V/cell — halt threshold */
+#define VBAT_MIN_MV  (3300 * VBAT_CELLS)  /* 3.3 V/cell — practical empty */
 
 static const struct adc_dt_spec adc_ch_vbat =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
