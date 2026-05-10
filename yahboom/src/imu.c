@@ -4,14 +4,15 @@
  */
 
 #include <zephyr/device.h>
-#include <zephyr/drivers/flash.h>
 #include <zephyr/drivers/i2c.h>
 #include <zephyr/drivers/sensor.h>
-#include <zephyr/fs/nvs.h>
 #include <zephyr/kernel.h>
+#include <zephyr/logging/log.h>
+#include <zephyr/settings/settings.h>
 #include <zephyr/shell/shell.h>
-#include <zephyr/storage/flash_map.h>
 #include "imu.h"
+
+LOG_MODULE_REGISTER(imu, LOG_LEVEL_DBG);
 
 #define MPU9250_I2C_ADDR     0x69
 #define MPU9250_REG_WHO_AM_I 0x75
@@ -20,38 +21,22 @@
 #define CAL_DURATION_MS  15000
 #define CAL_SAMPLE_MS    50
 
-#define MAG_CAL_NVS_ID   1
-
 static const struct device *imu     = DEVICE_DT_GET(DT_NODELABEL(mpu9250));
 static const struct device *i2c_bus = DEVICE_DT_GET(DT_NODELABEL(i2c3));
 
 /* Hard-iron offsets in sensor_value micro-units (µT × 1e6); zero = uncalibrated */
 static int64_t mag_cal[3];
-static struct nvs_fs mag_nvs;
 
-static int mag_nvs_init(void)
+static int mag_cal_set(const char *name, size_t len,
+		       settings_read_cb read_cb, void *cb_arg)
 {
-	struct flash_pages_info info;
-	int ret;
-
-	mag_nvs.flash_device = FIXED_PARTITION_DEVICE(storage_partition);
-	mag_nvs.offset       = FIXED_PARTITION_OFFSET(storage_partition);
-
-	ret = flash_get_page_info_by_offs(mag_nvs.flash_device, mag_nvs.offset, &info);
-	if (ret) {
-		printk("imu: flash page info failed: %d\n", ret);
-		return ret;
+	if (strcmp(name, "offsets") == 0 && len == sizeof(mag_cal)) {
+		read_cb(cb_arg, mag_cal, sizeof(mag_cal));
 	}
-
-	mag_nvs.sector_size  = info.size;
-	mag_nvs.sector_count = FIXED_PARTITION_SIZE(storage_partition) / info.size;
-
-	ret = nvs_mount(&mag_nvs);
-	if (ret) {
-		printk("imu: NVS mount failed: %d\n", ret);
-	}
-	return ret;
+	return 0;
 }
+
+SETTINGS_STATIC_HANDLER_DEFINE(imu, "imu", NULL, mag_cal_set, NULL, NULL);
 
 static void apply_mag_cal(struct sensor_value *m)
 {
@@ -71,13 +56,8 @@ int imu_init(void)
 		return -ENODEV;
 	}
 
-	if (mag_nvs_init() == 0) {
-		ssize_t rc = nvs_read(&mag_nvs, MAG_CAL_NVS_ID, mag_cal, sizeof(mag_cal));
-
-		if (rc != sizeof(mag_cal)) {
-			memset(mag_cal, 0, sizeof(mag_cal));
-		}
-	}
+	settings_subsys_init();
+	settings_load_subtree("imu");
 	return 0;
 }
 
@@ -198,11 +178,11 @@ static int cmd_imu_cal_start(const struct shell *sh, size_t argc, char **argv)
 		mag_cal[i] = (mn[i] + mx[i]) / 2;
 	}
 
-	ssize_t rc = nvs_write(&mag_nvs, MAG_CAL_NVS_ID, mag_cal, sizeof(mag_cal));
+	int ret = settings_save_one("imu/offsets", mag_cal, sizeof(mag_cal));
 
-	if (rc < 0) {
-		shell_error(sh, "NVS write failed: %d", (int)rc);
-		return (int)rc;
+	if (ret) {
+		shell_error(sh, "settings save failed: %d", ret);
+		return ret;
 	}
 
 	shell_print(sh, "done.  offsets  x: %d.%06d  y: %d.%06d  z: %d.%06d uT",
@@ -228,7 +208,7 @@ static int cmd_imu_cal_show(const struct shell *sh, size_t argc, char **argv)
 static int cmd_imu_cal_reset(const struct shell *sh, size_t argc, char **argv)
 {
 	mag_cal[0] = mag_cal[1] = mag_cal[2] = 0;
-	nvs_delete(&mag_nvs, MAG_CAL_NVS_ID);
+	settings_delete("imu/offsets");
 	shell_print(sh, "calibration cleared");
 	return 0;
 }
