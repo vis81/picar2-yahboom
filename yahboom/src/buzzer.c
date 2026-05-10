@@ -184,6 +184,12 @@ static const struct note_duration *songs[] = {
 	tetris_song,
 };
 
+static const char *song_names[] = {
+	"mario",
+	"funkytown",
+	"tetris",
+};
+
 int buzzer_init() {
 	if (!pwm_is_ready_dt(&sBuzzer)) {
 			printk("Error: PWM device %s is not ready\n", sBuzzer.dev->name);
@@ -234,9 +240,18 @@ static int cmd_buzzer_play(const struct shell *sh, size_t argc,
 	return buzzer_play(id, vol);
 }
 
+static int cmd_buzzer_list(const struct shell *sh, size_t argc, char **argv)
+{
+	for (int i = 0; i < ARRAY_SIZE(song_names); i++) {
+		shell_print(sh, "%d  %s", i, song_names[i]);
+	}
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_buzzer,
+	SHELL_CMD(list, NULL, "List available songs", cmd_buzzer_list),
 	SHELL_CMD(play, NULL, "id volume", cmd_buzzer_play),
-	SHELL_SUBCMD_SET_END /* Array terminated. */
+	SHELL_SUBCMD_SET_END
 );
 
-SHELL_CMD_REGISTER(buzzer, &sub_buzzer, "rc commands", NULL);
+SHELL_CMD_REGISTER(buzzer, &sub_buzzer, "Buzzer commands", NULL);
