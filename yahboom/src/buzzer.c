@@ -263,9 +263,16 @@ static int cmd_buzzer_list(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_buzzer_stop(const struct shell *sh, size_t argc, char **argv)
+{
+	atomic_set(&stop_flag, 1);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_buzzer,
 	SHELL_CMD(list, NULL, "List available songs", cmd_buzzer_list),
 	SHELL_CMD(play, NULL, "id volume", cmd_buzzer_play),
+	SHELL_CMD(stop, NULL, "Stop playback", cmd_buzzer_stop),
 	SHELL_SUBCMD_SET_END
 );
 
