@@ -16,6 +16,9 @@
 
 #define ADC2VBAT(x)  ((x) * 4145 / 1000)
 
+/* 3S LiPo: warn below 3.5 V/cell = 10 500 mV */
+#define VBAT_LOW_MV  10500
+
 static const struct adc_dt_spec adc_ch_vbat =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
 
@@ -67,8 +70,10 @@ static void battery_mon_func(struct k_work *work)
 		printk("read battery voltage error %d\n", err);
 		return;
 	}
-	printk("battery: %d mV\n", val);
-	k_work_reschedule(&battery_mon_work, K_SECONDS(5));	
+	if (val < VBAT_LOW_MV) {
+		printk("WARNING: low battery: %d mV\n", val);
+	}
+	k_work_reschedule(&battery_mon_work, K_SECONDS(5));
 }
 
 
