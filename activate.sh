@@ -10,7 +10,7 @@
 # On subsequent runs: fast — just sources the venv and sets env vars.
 #
 # After switching git branches, run:
-#   source activate.sh && west update
+#   git checkout <branch> && west update
 
 REPO="$(cd "$(dirname "${BASH_SOURCE[0]}")" && pwd)"
 SDK_PLATFORM="${SDK_PLATFORM:-linux-x86_64}"

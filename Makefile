@@ -13,8 +13,7 @@ MCUMGR      = ~/go/bin/mcumgr
 help:
 	@echo ""
 	@echo "First-time setup:"
-	@echo "  source activate.sh              — create venv, init west, download SDK"
-	@echo "  west update                     — fetch/update Zephyr and modules"
+	@echo "  source activate.sh              — create venv, init west, fetch deps, download SDK"
 	@echo ""
 	@echo "Build:"
 	@echo "  make                            — build the main application"
@@ -32,8 +31,7 @@ help:
 	@echo "  make distclean                  — remove build + zephyr_os/ + .west/"
 	@echo ""
 	@echo "Switching Zephyr versions:"
-	@echo "  git checkout <branch>"
-	@echo "  source activate.sh && west update"
+	@echo "  git checkout <branch> && west update"
 	@echo ""
 
 # ── environment check ─────────────────────────────────────────────────────────
