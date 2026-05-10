@@ -12,14 +12,15 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/adc_compat.h>
 #include <zephyr/shell/shell.h>
-//#include "buzzer.h"
+#include "power.h"
 
 #define ADC2VBAT(x)  ((x) * 4145 / 1000)
 
-/* 3S LiPo voltage range and low-battery threshold */
+/* 3S LiPo voltage range and thresholds */
 #define VBAT_MAX_MV  12600   /* 4.2 V/cell × 3 — fully charged */
 #define VBAT_MIN_MV   9900   /* 3.3 V/cell × 3 — practical empty */
 #define VBAT_LOW_MV  10500   /* 3.5 V/cell × 3 — warn threshold  */
+#define VBAT_CRIT_MV 10200   /* 3.4 V/cell × 3 — halt threshold  */
 
 static const struct adc_dt_spec adc_ch_vbat =
     ADC_DT_SPEC_GET_BY_IDX(DT_PATH(zephyr_user), 0);
@@ -70,6 +71,12 @@ static void battery_mon_func(struct k_work *work)
 	int err = battery_read(&val);
 	if (err) {
 		printk("read battery voltage error %d\n", err);
+		k_work_reschedule(&battery_mon_work, K_SECONDS(5));
+		return;
+	}
+	if (val < VBAT_CRIT_MV) {
+		printk("CRITICAL: battery %d mV — entering standby\n", val);
+		power_standby();
 		return;
 	}
 	if (val < VBAT_LOW_MV) {

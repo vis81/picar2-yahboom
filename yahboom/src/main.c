@@ -34,6 +34,7 @@
 #include "control.h"
 #include "imu.h"
 #include "motor.h"
+#include "power.h"
 #include "rc.h"
 #include "servo.h"
 
@@ -41,6 +42,20 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
 /* STM32F103 system memory (ROM bootloader) address */
 #define STM32_SYSTEM_MEMORY 0x1FFFF000U
+
+void power_standby(void)
+{
+	__disable_irq();
+	SysTick->CTRL = 0;
+
+	/* STM32F103 STANDBY: all I/O tri-stated, ~2 µA */
+	RCC->APB1ENR |= RCC_APB1ENR_PWREN;
+	PWR->CR |= PWR_CR_CWUF;
+	PWR->CR |= PWR_CR_PDDS;
+	SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
+	__DSB();
+	__WFI();
+}
 
 static void jump_to_system_bootloader(void)
 {
@@ -95,17 +110,7 @@ static int cmd_sys_halt(const struct shell *sh, size_t argc, char **argv)
 {
 	shell_print(sh, "entering standby — reset pin or power cycle to wake");
 	k_msleep(50);
-
-	__disable_irq();
-	SysTick->CTRL = 0;
-
-	/* STM32F103 STANDBY: all I/O tri-stated, ~2 µA */
-	RCC->APB1ENR |= RCC_APB1ENR_PWREN;
-	PWR->CR |= PWR_CR_CWUF;            /* clear wake-up flag */
-	PWR->CR |= PWR_CR_PDDS;            /* standby (not stop) on deep sleep */
-	SCB->SCR |= SCB_SCR_SLEEPDEEP_Msk;
-	__DSB();
-	__WFI();
+	power_standby();
 	return 0;
 }
 
