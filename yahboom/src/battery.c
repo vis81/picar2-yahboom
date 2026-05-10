@@ -116,7 +116,28 @@ static int cmd_level(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_info(const struct shell *sh, size_t argc, char **argv)
+{
+	int val;
+	int err = battery_read(&val);
+	if (err) {
+		shell_error(sh, "error %d", err);
+		return err;
+	}
+	int pct = CLAMP((val - VBAT_MIN_MV) * 100 / (VBAT_MAX_MV - VBAT_MIN_MV), 0, 100);
+
+	shell_print(sh, "cells     %dS", VBAT_CELLS);
+	shell_print(sh, "max       %d mV  (%.1f V/cell)", VBAT_MAX_MV,  4200 / 1000.0);
+	shell_print(sh, "low       %d mV  (%.1f V/cell)", VBAT_LOW_MV,  3500 / 1000.0);
+	shell_print(sh, "critical  %d mV  (%.1f V/cell)", VBAT_CRIT_MV, 3400 / 1000.0);
+	shell_print(sh, "empty     %d mV  (%.1f V/cell)", VBAT_MIN_MV,  3300 / 1000.0);
+	shell_print(sh, "voltage   %d mV", val);
+	shell_print(sh, "level     %d%%", pct);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_battery,
+	SHELL_CMD(info,    NULL, "Dump cell config, thresholds, voltage and level", cmd_info),
 	SHELL_CMD(voltage, NULL, "Print battery voltage in mV", cmd_voltage),
 	SHELL_CMD(level,   NULL, "Print battery charge level in %%", cmd_level),
 	SHELL_SUBCMD_SET_END
