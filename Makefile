@@ -1,3 +1,5 @@
+.DEFAULT_GOAL := all
+
 BOARD       = yahboom_ros_stm32f103
 CONN_STRING = dev=/dev/ttyUSB0,baud=115200
 APP_DIR     = yahboom
