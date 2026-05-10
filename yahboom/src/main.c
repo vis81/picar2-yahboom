@@ -32,6 +32,7 @@
 #include "battery.h"
 #include "buzzer.h"
 #include "control.h"
+#include "imu.h"
 #include "motor.h"
 #include "rc.h"
 #include "servo.h"
@@ -128,6 +129,7 @@ int main(void)
 	printk("Yahboom demo\n");
 	buzzer_init();
 	battery_init();
+	imu_init();
 	motor_init();
 	servo_init();
 	rc_init();
