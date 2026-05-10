@@ -20,8 +20,3 @@ manifest:
   self:
     path: .
     west-commands: scripts/west-commands.yml
-
-  # Non-west keys — read by activate.sh to select the matching SDK.
-  extras:
-    zephyr-sdk-version: "0.16.9"
-    zephyr-sdk-toolchain: "arm-zephyr-eabi"
