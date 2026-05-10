@@ -11,6 +11,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/sys/reboot.h>
+#include <zephyr/version.h>
 #include <soc.h>
 #include <zephyr/device.h>
 #include <zephyr/drivers/input/sbusreceiver.h>
@@ -101,10 +102,19 @@ static int cmd_sys_uptime(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_sys_version(const struct shell *sh, size_t argc, char **argv)
+{
+	shell_print(sh, "Zephyr  %s", KERNEL_VERSION_STRING);
+	shell_print(sh, "app     %s", APP_GIT_SHA);
+	shell_print(sh, "built   %s %s", __DATE__, __TIME__);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_sys,
 	SHELL_CMD(bootloader, NULL, "reboot into STM32 ROM bootloader", cmd_sys_bootloader),
 	SHELL_CMD(reboot,     NULL, "reboot the system", cmd_sys_reboot),
 	SHELL_CMD(uptime,     NULL, "print time since boot", cmd_sys_uptime),
+	SHELL_CMD(version,    NULL, "print kernel version", cmd_sys_version),
 	SHELL_SUBCMD_SET_END
 );
 
