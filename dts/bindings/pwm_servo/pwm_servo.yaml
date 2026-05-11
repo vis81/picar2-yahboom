@@ -1,7 +1,7 @@
-# Copyright (c) 2021 Daniel Veilleux
-# SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
+# Copyright (c) 2024 Valentyn Shevchenko
+# SPDX-License-Identifier: Apache-2.0
 
-description: Servo implementation that uses NRFX PWM driver
+description: PWM-controlled servo motor
 
 compatible: "pwm-servo"
 
@@ -15,21 +15,20 @@ properties:
 
   init_value:
     type: int
-    description: Initial value [0, 100]
+    description: Initial position value [0, 100]
     required: true
 
   min_pulse_us:
     type: int
-    description: Minimum pulse width in microseconds [0, 1500]
+    description: Minimum pulse width in microseconds
     required: true
 
   max_pulse_us:
     type: int
-    description: Maximum pulse width in microseconds [1500, 3000]
+    description: Maximum pulse width in microseconds
     required: true
 
   pwms:
     required: true
     type: phandle-array
     description: PWM specifier driving the servo motor.
-

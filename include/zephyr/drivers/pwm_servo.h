@@ -1,14 +1,8 @@
-/**
- * @file nrf_servo.h
- *
- * @brief Public API for the servo driver based on the NRFX PWM driver
+/*
+ * Copyright (c) 2024 Valentyn Shevchenko
+ * SPDX-License-Identifier: Apache-2.0
  */
 
-/*
- * Copyright (c) 2021 Daniel Veilleux
- *
- * SPDX-License-Identifier: LicenseRef-BSD-5-Clause-Nordic
- */
 #ifndef PWM_SERVO_H_
 #define PWM_SERVO_H_
 
@@ -18,20 +12,14 @@ extern "C" {
 
 #include <zephyr/kernel.h>
 #include <zephyr/device.h>
-#include <stdbool.h>
 
-#define SERVO_MIN_VALUE      0
-#define SERVO_NEUTRAL_VALUE	 50
-#define SERVO_MAX_VALUE      100
+#define SERVO_MIN_VALUE     0
+#define SERVO_NEUTRAL_VALUE 50
+#define SERVO_MAX_VALUE     100
 
 typedef int (*servo_write_t)(const struct device *dev, uint8_t  value);
 typedef int (*servo_read_t) (const struct device *dev, uint8_t *value);
 
-/**
- * @brief Servo driver API
- *
- * This is the API all servo drivers must expose.
- */
 struct servo_driver_api {
 	servo_write_t write;
 	servo_read_t  read;
@@ -39,33 +27,25 @@ struct servo_driver_api {
 
 static inline int servo_write(const struct device *dev, uint8_t value)
 {
-	struct servo_driver_api *api;
+	const struct servo_driver_api *api;
 
-	if (dev == NULL) {
+	if (dev == NULL)
 		return -EINVAL;
-	}
-
-	api = (struct servo_driver_api*)dev->api;
-
-	if (api->write == NULL) {
+	api = dev->api;
+	if (api->write == NULL)
 		return -ENOTSUP;
-	}
 	return api->write(dev, value);
 }
 
 static inline int servo_read(const struct device *dev, uint8_t *value)
 {
-	struct servo_driver_api *api;
+	const struct servo_driver_api *api;
 
-	if (dev == NULL) {
+	if (dev == NULL)
 		return -EINVAL;
-	}
-
-	api = (struct servo_driver_api*)dev->api;
-
-	if (api->read == NULL) {
+	api = dev->api;
+	if (api->read == NULL)
 		return -ENOTSUP;
-	}
 	return api->read(dev, value);
 }
 
