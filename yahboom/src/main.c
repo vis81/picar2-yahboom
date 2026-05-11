@@ -43,6 +43,16 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 /* STM32F103 system memory (ROM bootloader) address */
 #define STM32_SYSTEM_MEMORY 0x1FFFF000U
 
+void system_shutdown(void)
+{
+	rc_disable();
+	motor_stop_all();
+	servo_neutral_all();
+	buzzer_stop();
+	imu_shutdown();
+	power_standby();
+}
+
 void power_standby(void)
 {
 	__disable_irq();
@@ -110,8 +120,7 @@ static int cmd_sys_halt(const struct shell *sh, size_t argc, char **argv)
 {
 	shell_print(sh, "entering standby — reset pin or power cycle to wake");
 	k_msleep(50);
-	imu_shutdown();
-	power_standby();
+	system_shutdown();
 	return 0;
 }
 

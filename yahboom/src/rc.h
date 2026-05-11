@@ -7,5 +7,6 @@
 #define _rc_h_
 
 int rc_init();
+void rc_disable(void);
 
 #endif

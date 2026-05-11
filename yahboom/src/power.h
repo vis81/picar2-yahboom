@@ -8,4 +8,7 @@
 /* Enter STM32F103 STANDBY mode (~2 µA); only a reset or power cycle wakes it. */
 void power_standby(void);
 
+/* Orderly shutdown: RC → motors → servos → buzzer → IMU → STANDBY. */
+void system_shutdown(void);
+
 #endif

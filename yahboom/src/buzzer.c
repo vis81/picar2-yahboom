@@ -233,6 +233,12 @@ int buzzer_init() {
 	return 0;
 }
 
+void buzzer_stop(void)
+{
+	atomic_set(&stop_flag, 1);
+	pwm_set_pulse_dt(&sBuzzer, 0);
+}
+
 int buzzer_play(enum buzzer_sound id, uint8_t volume) {
 	if (id > BUZZER_LAST || volume > 100)
 		return -EINVAL;

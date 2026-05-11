@@ -15,5 +15,6 @@ enum buzzer_sound {
 
 int buzzer_init();
 int buzzer_play(enum buzzer_sound id, uint8_t volume);
+void buzzer_stop(void);
 
 #endif

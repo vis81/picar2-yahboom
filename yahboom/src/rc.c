@@ -50,6 +50,11 @@ static int rc_debug = 0;
 static int rc_enable = 1;
 static int rc_mode = MODE_MANUAL;
 
+void rc_disable(void)
+{
+	rc_enable = 0;
+}
+
 int rc_init() {
 	if (!device_is_ready(receiver)) {
 		printk("RC IN device not ready.\n");

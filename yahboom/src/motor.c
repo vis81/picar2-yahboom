@@ -39,6 +39,13 @@ int motor_init() {
 	return 0;
 }
 
+void motor_stop_all(void)
+{
+	for (int i = 0; i < NUM_MOTORS; i++) {
+		motor_write(motors[i], DIR_STOP, 0);
+	}
+}
+
 int motor_throttle(enum motor_id id, uint32_t dir, uint32_t throttle) {
 	if (id > MOTOR_LAST)
 		return -EINVAL;

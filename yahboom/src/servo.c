@@ -53,6 +53,13 @@ int servo_init(void)
 	return 0;
 }
 
+void servo_neutral_all(void)
+{
+	for (int i = 0; i < NUM_SERVOS; i++) {
+		servo_write(servo[i], 50);
+	}
+}
+
 int servo_steer(uint8_t val) {
 	return servo_write(servo[0], val);
 }
