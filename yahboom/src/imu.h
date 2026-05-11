@@ -8,5 +8,7 @@
 
 int imu_init(void);
 void imu_shutdown(void);
+int imu_whoami(uint8_t *who);
+int imu_sample(void);
 
 #endif /* _IMU_H_ */

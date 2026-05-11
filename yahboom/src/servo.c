@@ -68,6 +68,16 @@ int servo_get(uint8_t *pval) {
 	return servo_read(servo[0], pval);
 }
 
+int servo_write_id(int id, uint8_t val) {
+	if (id < 0 || id >= NUM_SERVOS) return -EINVAL;
+	return servo_write(servo[id], val);
+}
+
+int servo_read_id(int id, uint8_t *val) {
+	if (id < 0 || id >= NUM_SERVOS) return -EINVAL;
+	return servo_read(servo[id], val);
+}
+
 #ifdef CONFIG_SHELL
 
 static int cmd_servo_pulse(const struct shell *sh, size_t argc,

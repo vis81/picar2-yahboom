@@ -57,6 +57,17 @@ void imu_shutdown(void)
 			   MPU9250_REG_PWR_MGMT_1, MPU9250_PWR_SLEEP);
 }
 
+int imu_whoami(uint8_t *who)
+{
+	return i2c_reg_read_byte(i2c_bus, MPU9250_I2C_ADDR,
+				 MPU9250_REG_WHO_AM_I, who);
+}
+
+int imu_sample(void)
+{
+	return sensor_sample_fetch(imu);
+}
+
 int imu_init(void)
 {
 	if (!device_is_ready(imu)) {
