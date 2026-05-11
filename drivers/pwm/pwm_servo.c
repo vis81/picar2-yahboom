@@ -34,13 +34,17 @@ static inline int channel_set(const struct device *dev, uint8_t value)
 {
 	const struct servo_cfg *p_cfg  = dev->config;
 	struct servo_data      *p_data = dev->data;
+	int ret;
 
 	if (value > SERVO_MAX_VALUE)
 		return -EINVAL;
-	uint32_t val = MAP(value, PWM_USEC(p_cfg->min_pulse_us), PWM_USEC(p_cfg->max_pulse_us));
-	p_data->current_value = value;
-	LOG_DBG("Set pulse %u", val);
-	return pwm_set_pulse_dt(&p_cfg->pwm_spec, val);
+	uint32_t pulse = MAP(value, PWM_USEC(p_cfg->min_pulse_us), PWM_USEC(p_cfg->max_pulse_us));
+	ret = pwm_set_pulse_dt(&p_cfg->pwm_spec, pulse);
+	if (!ret) {
+		p_data->current_value = value;
+		LOG_DBG("Set pulse %u", pulse);
+	}
+	return ret;
 }
 
 static inline int channel_get(const struct device *dev, uint8_t *p_value)
