@@ -5,7 +5,7 @@ CONN_STRING = dev=/dev/ttyUSB0,baud=115200
 APP_DIR     = yahboom
 MCUMGR      = ~/go/bin/mcumgr
 
-.PHONY: help all $(APP_DIR) clean distclean \
+.PHONY: help all $(APP_DIR) test clean distclean \
         mcuboot app-signed \
         flash flash-app-signed flash-mcuboot flash-app-signed-mcumgr \
         check-env
@@ -19,6 +19,7 @@ help:
 	@echo ""
 	@echo "Build:"
 	@echo "  make                            — build the main application"
+	@echo "  make test                       — build and run all unit tests (native_sim)"
 	@echo "  make mcuboot                    — build MCUboot bootloader"
 	@echo "  make app-signed                 — build application with MCUboot signing"
 	@echo ""
@@ -56,6 +57,10 @@ check-env:
 # ── build targets ─────────────────────────────────────────────────────────────
 
 all: $(APP_DIR)
+
+test: check-env
+	west build -p auto -s tests/drivers/pwm/pwm_servo -b native_sim -d build/tests/pwm_servo
+	./build/tests/pwm_servo/zephyr/zephyr.exe
 
 clean:
 	rm -rf build
