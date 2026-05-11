@@ -1,0 +1,33 @@
+/*
+ * Copyright (c) 2024 Valentyn Shevchenko
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/dt-bindings/pwm/pwm.h>
+
+/ {
+	/*
+	 * Fake PWM controller.  get_cycles_per_sec returns NSEC_PER_SEC so
+	 * pulse_cycles == pulse_ns, making expected values easy to compute.
+	 */
+	fake_pwm0: fake-pwm@0 {
+		compatible = "test,fake-pwm";
+		reg = <0x0 0x1>;
+		status = "okay";
+		#pwm-cells = <3>;
+	};
+
+	/*
+	 * Test servo: round numbers for easy expected-value arithmetic.
+	 *   min = 1000 µs  →  PWM_USEC(1000) = 1 000 000 ns
+	 *   max = 2000 µs  →  PWM_USEC(2000) = 2 000 000 ns
+	 */
+	servo_test: servo-test {
+		compatible = "pwm-servo";
+		status = "okay";
+		init_value = <50>;
+		min_pulse_us = <1000>;
+		max_pulse_us = <2000>;
+		pwms = <&fake_pwm0 0 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
+	};
+};

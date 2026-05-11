@@ -1,0 +1,21 @@
+# Copyright (c) 2024 Valentyn Shevchenko
+# SPDX-License-Identifier: Apache-2.0
+
+description: Fake PWM controller for unit testing
+
+compatible: "test,fake-pwm"
+
+include: base.yaml
+
+properties:
+  reg:
+    required: true
+
+  "#pwm-cells":
+    type: int
+    const: 3
+
+pwm-cells:
+  - channel
+  - period
+  - flags
