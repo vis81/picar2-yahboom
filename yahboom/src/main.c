@@ -31,7 +31,6 @@
 
 #include "battery.h"
 #include "buzzer.h"
-#include "control.h"
 #include "imu.h"
 #include "motor.h"
 #include "power.h"
@@ -167,9 +166,6 @@ int main(void)
 	motor_init();
 	servo_init();
 	rc_init();
-#ifdef CONFIG_UART_PIPE
-	control_init();
-#endif //CONFIG_UART_PIPE
 
 	//buzzer_play(BUZZER_FUNKYTOWN, 50);
 
