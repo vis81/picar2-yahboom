@@ -96,7 +96,7 @@
 &usart1 {
 	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
 	pinctrl-names = "default";
-	current-speed = <115200>;
+	current-speed = <921600>;
 	status = "okay";
 };
 
@@ -108,6 +108,7 @@
 	parity = "even";
 	stop-bits = "2";
 	data-bits = <8>;
+	status = "disabled";
     rc: sbus {
         compatible = "sbus-receiver";
         label = "sbus0";
@@ -117,9 +118,7 @@
 
 /* FTDI or I2C port */
 &usart3 {
-	/* serial servo pins */
-	// pinctrl-0 = <&usart3_tx_remap1_pc10 &usart3_rx_remap1_pc11>;
-	/* I2C pins SCL=TX SDA=RX */
+	/* debug console on PB10/PB11 (shared with i2c2 — keep i2c2 disabled) */
 	pinctrl-0 = <&usart3_tx_pb10 &usart3_rx_pb11>;
 	pinctrl-names = "default";
 	current-speed = <921600>;
@@ -231,17 +230,18 @@
 &i2c2 {
 	pinctrl-0 = <&i2c2_scl_pb10 &i2c2_sda_pb11>;
 	pinctrl-names = "default";
-	status = "disabled";
-	// status = "okay"; // disable if occupied by usart3
+	status = "disabled"; /* PB10/PB11 shared with usart3 (console) */
 	clock-frequency = <I2C_BITRATE_FAST>;
 };
 
-/* ICM20948 MPU*/
+/* ICM20948 MPU */
+/* NOT INSTALLED, see MPU9250 port on i2c3 instead
 &spi2 {
 	pinctrl-0 = <&spi2_nss_master_pb12 &spi2_sck_master_pb13 &spi2_miso_master_pb14 &spi2_mosi_master_pb15>;
 	pinctrl-names = "default";
 	status = "disabled";
 };
+*/
 
 /* on CAN port */
 &i2c1 {
@@ -264,7 +264,7 @@
 };
 
 &iwdg {
-	status = "okay";
+	status = "disabled";
 };
 
 &rtc {
@@ -291,7 +291,7 @@
 };
 
 &die_temp {
-	status = "okay";
+	status = "disabled";
 };
 
 &pinctrl {

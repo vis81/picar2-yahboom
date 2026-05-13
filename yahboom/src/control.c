@@ -32,6 +32,8 @@
 #include "rc.h"
 #include "servo.h"
 
+#ifdef CONFIG_UART_PIPE
+
 LOG_MODULE_REGISTER(control, LOG_LEVEL_INF);
 
 #define UART_PIPE_BUF_SIZE 64
@@ -187,3 +189,6 @@ static int cmd_shell_control(const struct shell *sh, size_t argc,
 SHELL_CMD_REGISTER(c, NULL, "API commands", cmd_shell_control);
 
 #endif
+
+
+#endif // CONFIG_UART_PIPE

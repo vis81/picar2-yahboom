@@ -167,7 +167,9 @@ int main(void)
 	motor_init();
 	servo_init();
 	rc_init();
+#ifdef CONFIG_UART_PIPE
 	control_init();
+#endif //CONFIG_UART_PIPE
 
 	//buzzer_play(BUZZER_FUNKYTOWN, 50);
 
