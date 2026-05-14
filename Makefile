@@ -1,7 +1,9 @@
 .DEFAULT_GOAL := all
 
 BOARD       = yahboom_ros_stm32f103
-CONN_STRING = dev=/dev/ttyUSB0,baud=115200
+CONN_STRING = dev=/dev/ttyYahboom0,baud=115200
+UROS_DEV    = /dev/ttyYahboom0
+UROS_BAUD   = 921600
 APP_DIR     = yahboom
 MCUMGR      = ~/go/bin/mcumgr
 
