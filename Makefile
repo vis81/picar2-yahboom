@@ -7,7 +7,7 @@ UROS_BAUD   = 921600
 APP_DIR     = yahboom
 MCUMGR      = ~/go/bin/mcumgr
 
-.PHONY: help all $(APP_DIR) tests test test-stm32-sw test-sbus clean distclean \
+.PHONY: help all $(APP_DIR) tests test-pwm-servo test-stm32-sw test-sbus clean distclean \
         mcuboot app-signed \
         flash flash-app-signed flash-mcuboot flash-app-signed-mcumgr \
         check-env
@@ -21,10 +21,10 @@ help:
 	@echo ""
 	@echo "Build:"
 	@echo "  make                            — build the main application"
-	@echo "  make test                       — build and run native_sim unit tests"
+	@echo "  make test-pwm-servo             — build and run PWM servo unit tests (native_sim)"
 	@echo "  make test-sbus                  — build and run SBUS receiver unit tests (native_sim)"
 	@echo "  make test-stm32-sw              — build STM32 SW-PWM unit tests (build only)"
-	@echo "  make tests                      — run all: test + test-sbus + test-stm32-sw"
+	@echo "  make tests                      — run all: test-pwm-servo + test-sbus + test-stm32-sw"
 	@echo "  make mcuboot                    — build MCUboot bootloader"
 	@echo "  make app-signed                 — build application with MCUboot signing"
 	@echo ""
@@ -63,7 +63,7 @@ check-env:
 
 all: $(APP_DIR)
 
-test: check-env
+test-pwm-servo: check-env
 	west build -p auto -s tests/drivers/pwm/pwm_servo -b native_sim -d build/tests/pwm_servo
 	./build/tests/pwm_servo/zephyr/zephyr.exe
 
@@ -74,7 +74,7 @@ test-sbus: check-env
 test-stm32-sw: check-env
 	west build -p auto -s tests/drivers/pwm/pwm_stm32_sw -b $(BOARD) -d build/tests/pwm_stm32_sw
 
-tests: test test-sbus test-stm32-sw
+tests: test-pwm-servo test-sbus test-stm32-sw
 
 clean:
 	rm -rf build
