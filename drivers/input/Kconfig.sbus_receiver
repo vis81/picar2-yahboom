@@ -2,8 +2,12 @@
 # SPDX-License-Identifier: Apache-2.0
 
 config INPUT_SBUS_RECEIVER
-    bool "RC S.Bus driver"
-    # depends on UART_USE_RUNTIME_CONFIGURE
-    select UART_INTERRUPT_DRIVEN
-    help
-      Enable S.Bus RC receiver driver.
+	bool "RC S.Bus driver"
+	select UART_INTERRUPT_DRIVEN
+	help
+	  Enable S.Bus RC receiver driver.
+
+config RC_INIT_PRIORITY
+	int "SBUS receiver init priority"
+	depends on INPUT_SBUS_RECEIVER
+	default 80

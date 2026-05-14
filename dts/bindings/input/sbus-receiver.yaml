@@ -12,21 +12,21 @@ properties:
     type: boolean
     description: Continue generating events when SBUS reports frame lost
 
-  continue-on-fale-safe:
+  continue-on-failsafe:
     type: boolean
-    description: Continue generating events when SBUS reports fale safe
+    description: Continue generating events when SBUS reports failsafe
 
 child-binding:
-  description: GPIO KEYS child node
+  description: SBUS channel node
   properties:
     channel:
       type: int
       required: true
-      description: channel number
+      description: SBUS channel number (1-16)
 
     zephyr,axis:
       type: int
       required: true
       description: |
         The input code for the axis to report for the device, typically any of
-        INPUT_REL_*.
+        INPUT_ABS_* or INPUT_REL_*.
