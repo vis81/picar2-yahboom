@@ -77,11 +77,11 @@ static void sbus_handle_rx(const struct device *dev)
 				stats->rx_good++;
 				struct sbus_buffer *buf_next = &data->buf[!data->cur_buf];
 				if (!buf_next->locked) {
+					buf->ts = k_uptime_get();
+					stats->last_ts = buf->ts;
 					data->cur_buf = !data->cur_buf;
 					buf = buf_next;
 					buf->pointer = 0;
-					buf->ts = k_uptime_get();
-					stats->last_ts = buf->ts;
 					k_work_submit(&data->work);
 				} else {
 					stats->rx_discarded++;
