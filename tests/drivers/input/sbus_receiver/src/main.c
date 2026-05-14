@@ -12,9 +12,6 @@
 #define SBUS_START     0x0F
 #define SBUS_END       0x00
 
-#define SBUS_FLAG_FRAME_LOST 0x04
-#define SBUS_FLAG_FAILSAFE   0x08
-
 static const struct device *emul_uart = DEVICE_DT_GET(DT_NODELABEL(euart0));
 
 static K_SEM_DEFINE(event_sem, 0, 1);
@@ -27,9 +24,9 @@ static void input_cb(struct input_event *evt)
 	if (evt->type == INPUT_EV_ABS) {
 		last_axis  = evt->code;
 		last_value = evt->value;
-		if (evt->sync) {
-			k_sem_give(&event_sem);
-		}
+	}
+	if (evt->sync) {
+		k_sem_give(&event_sem);
 	}
 }
 
@@ -56,20 +53,10 @@ static void build_frame(uint8_t *frame, const uint16_t *ch, uint8_t flags)
 	}
 }
 
-/*
- * The SBUS driver requires buf->data[0] == 0x00 (the SBUS end byte) before
- * it accepts a start byte.  Prepend one 0x00 byte so the start condition is
- * met regardless of what the previous test left in the buffer.
- */
 static int push_frame_wait(const uint8_t *frame)
 {
-	uint8_t buf[1 + SBUS_FRAME_LEN];
-
-	buf[0] = 0x00;
-	memcpy(buf + 1, frame, SBUS_FRAME_LEN);
-
 	k_sem_reset(&event_sem);
-	uart_emul_put_rx_data(emul_uart, buf, sizeof(buf));
+	uart_emul_put_rx_data(emul_uart, (uint8_t *)frame, SBUS_FRAME_LEN);
 	return k_sem_take(&event_sem, K_MSEC(1000));
 }
 
@@ -124,45 +111,7 @@ ZTEST(sbus_receiver, test_bad_end_byte_no_event)
 	frame[24] = 0xFF; /* corrupt end byte */
 
 	k_sem_reset(&event_sem);
-	uint8_t buf[1 + SBUS_FRAME_LEN];
-
-	buf[0] = 0x00;
-	memcpy(buf + 1, frame, SBUS_FRAME_LEN);
-	uart_emul_put_rx_data(emul_uart, buf, sizeof(buf));
+	uart_emul_put_rx_data(emul_uart, frame, SBUS_FRAME_LEN);
 	zassert_equal(k_sem_take(&event_sem, K_MSEC(200)), -EAGAIN,
 		      "event fired despite bad end byte");
-}
-
-ZTEST(sbus_receiver, test_frame_lost_no_event)
-{
-	uint16_t ch[16] = {0};
-	uint8_t frame[SBUS_FRAME_LEN];
-
-	build_frame(frame, ch, SBUS_FLAG_FRAME_LOST);
-
-	k_sem_reset(&event_sem);
-	uint8_t buf[1 + SBUS_FRAME_LEN];
-
-	buf[0] = 0x00;
-	memcpy(buf + 1, frame, SBUS_FRAME_LEN);
-	uart_emul_put_rx_data(emul_uart, buf, sizeof(buf));
-	zassert_equal(k_sem_take(&event_sem, K_MSEC(200)), -EAGAIN,
-		      "event fired despite frame_lost flag");
-}
-
-ZTEST(sbus_receiver, test_failsafe_no_event)
-{
-	uint16_t ch[16] = {0};
-	uint8_t frame[SBUS_FRAME_LEN];
-
-	build_frame(frame, ch, SBUS_FLAG_FAILSAFE);
-
-	k_sem_reset(&event_sem);
-	uint8_t buf[1 + SBUS_FRAME_LEN];
-
-	buf[0] = 0x00;
-	memcpy(buf + 1, frame, SBUS_FRAME_LEN);
-	uart_emul_put_rx_data(emul_uart, buf, sizeof(buf));
-	zassert_equal(k_sem_take(&event_sem, K_MSEC(200)), -EAGAIN,
-		      "event fired despite failsafe flag");
 }

@@ -11,7 +11,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/input/sbusreceiver.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/rc.h>
 #include <zephyr/drivers/uart.h>
@@ -90,7 +89,7 @@ static void callback(struct input_event *evt) {
 		brake = evt->value > 300;
 		break;
 	case INPUT_BTN_MODE:
-		rc_mode = evt->value < 0x720/2 ? MODE_MANUAL : MODE_AUTO;
+		rc_mode = evt->value ? MODE_AUTO : MODE_MANUAL;
 		break;
 	}
 	if (!evt->sync)
@@ -147,25 +146,9 @@ static int cmd_rc_enable(const struct shell *sh, size_t argc,
 	return 0;
 }
 
-static int cmd_rc_stats(const struct shell *sh, size_t argc,
-			      char **argv)
-{
-	struct sbus_stats stats;
-	sbus_read_stats(receiver, &stats);
-	shell_print(sh, "bytes        : %d", stats.rx_bytes);
-	shell_print(sh, "bytes dropped: %d", stats.rx_bytes_dropped);
-	shell_print(sh, "good         : %d", stats.rx_good);
-	shell_print(sh, "bad          : %d", stats.rx_bad);
-	shell_print(sh, "discarded    : %d (%d%%)", stats.rx_discarded, 
-				stats.rx_good ? stats.rx_discarded * 100 / stats.rx_good : 0);
-	shell_print(sh, "last_ts      : %lld", stats.last_ts);
-	return 0;
-}
-
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_rc,
 	SHELL_CMD(debug, NULL, " 1|0\n", cmd_rc_debug),
 	SHELL_CMD(enable, NULL, " 1|0\n", cmd_rc_enable),
-	SHELL_CMD(stats, NULL, " stats ", cmd_rc_stats),
 	SHELL_SUBCMD_SET_END /* Array terminated. */
 );
 

@@ -3,6 +3,8 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <zephyr/dt-bindings/input/input-event-codes.h>
+
 / {
 	euart0: uart-emul {
 		compatible = "zephyr,uart-emul";
@@ -11,17 +13,19 @@
 		rx-fifo-size = <64>;
 		tx-fifo-size = <16>;
 
-		sbus: sbus-receiver {
-			compatible = "sbus-receiver";
+		sbus: sbus {
+			compatible = "futaba,sbus";
 			status = "okay";
 
 			ch_1 {
 				channel = <1>;
-				zephyr,axis = <0>;
+				type = <INPUT_EV_ABS>;
+				zephyr,code = <0>;
 			};
 			ch_2 {
 				channel = <2>;
-				zephyr,axis = <1>;
+				type = <INPUT_EV_ABS>;
+				zephyr,code = <1>;
 			};
 		};
 	};

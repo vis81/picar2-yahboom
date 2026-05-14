@@ -11,7 +11,6 @@
 #include <zephyr/kernel.h>
 #include <zephyr/sys/printk.h>
 #include <zephyr/device.h>
-#include <zephyr/drivers/input/sbusreceiver.h>
 #include <zephyr/drivers/pwm.h>
 #include <zephyr/drivers/rc.h>
 #include <zephyr/drivers/uart.h>

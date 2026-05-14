@@ -157,25 +157,30 @@
 
 &usart2 {
 	status = "okay";
-    rc: sbus {
-        status = "okay";
-        ch_1 {
-            channel = <1>;
-            zephyr,axis = <INPUT_ABS_RUDDER>;
-        };
-        ch_2 {
-            channel = <2>;
-            zephyr,axis = <INPUT_ABS_GAS>;
-        };
-        ch_3 {
-            channel = <3>;
-            zephyr,axis = <INPUT_ABS_BRAKE>;
-        };
-        ch_6 {
-            channel = <6>;
-            zephyr,axis = <INPUT_BTN_MODE>;
-        };
-    };
+	rc: sbus {
+		compatible = "futaba,sbus";
+		status = "okay";
+		ch_1 {
+			channel = <1>;
+			type = <INPUT_EV_ABS>;
+			zephyr,code = <INPUT_ABS_RUDDER>;
+		};
+		ch_2 {
+			channel = <2>;
+			type = <INPUT_EV_ABS>;
+			zephyr,code = <INPUT_ABS_GAS>;
+		};
+		ch_3 {
+			channel = <3>;
+			type = <INPUT_EV_ABS>;
+			zephyr,code = <INPUT_ABS_BRAKE>;
+		};
+		ch_6 {
+			channel = <6>;
+			type = <INPUT_EV_KEY>;
+			zephyr,code = <INPUT_BTN_MODE>;
+		};
+	};
 };
 
 &adc1 {
