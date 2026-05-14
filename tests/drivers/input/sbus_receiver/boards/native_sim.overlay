@@ -1,0 +1,28 @@
+/*
+ * Copyright (c) 2024 Valentyn Shevchenko
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+/ {
+	euart0: uart-emul {
+		compatible = "zephyr,uart-emul";
+		status = "okay";
+		current-speed = <100000>;
+		rx-fifo-size = <64>;
+		tx-fifo-size = <16>;
+
+		sbus: sbus-receiver {
+			compatible = "sbus-receiver";
+			status = "okay";
+
+			ch_1 {
+				channel = <1>;
+				zephyr,axis = <0>;
+			};
+			ch_2 {
+				channel = <2>;
+				zephyr,axis = <1>;
+			};
+		};
+	};
+};
