@@ -36,7 +36,7 @@ help:
 	@echo ""
 	@echo "Clean:"
 	@echo "  make clean                      — remove build directory"
-	@echo "  make distclean                  — remove build + zephyr_os/ + .west/"
+	@echo "  make distclean                  — remove build + zephyr_os/ + .west/ + .venv/"
 	@echo ""
 	@echo "Switching Zephyr versions:"
 	@echo "  git checkout <branch>"
@@ -80,7 +80,7 @@ clean:
 	rm -rf build
 
 distclean:
-	rm -rf build zephyr_os .west
+	rm -rf build zephyr_os .west .venv
 
 $(APP_DIR): check-env
 	west build -p auto -s $(APP_DIR) -b $(BOARD)
