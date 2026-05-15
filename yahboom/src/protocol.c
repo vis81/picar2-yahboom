@@ -19,6 +19,12 @@ static struct proto_stats stats;
 static void rx_work_fn(struct k_work *w);
 static K_WORK_DEFINE(rx_work, rx_work_fn);
 
+#define DMA_BUF_SIZE       64
+#define RX_IDLE_TIMEOUT_US 1000
+
+static uint8_t dma_rx_buf[2][DMA_BUF_SIZE];
+static uint8_t dma_buf_idx;
+
 static uint8_t crc8(const uint8_t *buf, size_t len)
 {
 	uint8_t crc = 0;
@@ -103,17 +109,30 @@ static void rx_work_fn(struct k_work *w)
 	}
 }
 
-static void uart_isr(const struct device *dev, void *user_data)
+static void uart_async_cb(const struct device *dev, struct uart_event *evt,
+			  void *user_data)
 {
-	uint8_t buf[16];
-	int n;
-
-	while (uart_irq_update(dev) && uart_irq_rx_ready(dev)) {
-		n = uart_fifo_read(dev, buf, sizeof(buf));
-		if (n > 0) {
-			ring_buf_put(&rx_ring, buf, n);
-			k_work_submit(&rx_work);
-		}
+	switch (evt->type) {
+	case UART_RX_RDY:
+		ring_buf_put(&rx_ring,
+			     evt->data.rx.buf + evt->data.rx.offset,
+			     evt->data.rx.len);
+		k_work_submit(&rx_work);
+		break;
+	case UART_RX_BUF_REQUEST:
+		dma_buf_idx ^= 1;
+		uart_rx_buf_rsp(dev, dma_rx_buf[dma_buf_idx], DMA_BUF_SIZE);
+		break;
+	case UART_RX_BUF_RELEASED:
+		break;
+	case UART_RX_DISABLED:
+		/* Re-arm after overrun or explicit disable */
+		dma_buf_idx = 0;
+		uart_rx_enable(dev, dma_rx_buf[0], DMA_BUF_SIZE,
+			       RX_IDLE_TIMEOUT_US);
+		break;
+	default:
+		break;
 	}
 }
 
@@ -131,6 +150,7 @@ void proto_init(const struct device *uart, proto_rx_cb_t cb)
 {
 	proto_uart = uart;
 	proto_cb = cb;
-	uart_irq_callback_user_data_set(uart, uart_isr, NULL);
-	uart_irq_rx_enable(uart);
+	dma_buf_idx = 0;
+	uart_callback_set(uart, uart_async_cb, NULL);
+	uart_rx_enable(uart, dma_rx_buf[0], DMA_BUF_SIZE, RX_IDLE_TIMEOUT_US);
 }

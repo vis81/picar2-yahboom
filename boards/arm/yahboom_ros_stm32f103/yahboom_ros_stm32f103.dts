@@ -8,6 +8,7 @@
 #include <st/f1/stm32f103Xc.dtsi>
 #include <st/f1/stm32f103r(c-d-e)tx-pinctrl.dtsi>
 #include <zephyr/dt-bindings/input/input-event-codes.h>
+#include <zephyr/dt-bindings/dma/stm32_dma.h>
 
 / {
 	model = "yahboom_ros_stm32f103 board";
@@ -93,10 +94,16 @@
 };
 
 /* FTDI port */
+&dma1 {
+	status = "okay";
+};
+
 &usart1 {
 	pinctrl-0 = <&usart1_tx_pa9 &usart1_rx_pa10>;
 	pinctrl-names = "default";
 	current-speed = <460800>;
+	dmas = <&dma1 5 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH)>;
+	dma-names = "rx";
 	status = "okay";
 };
 
