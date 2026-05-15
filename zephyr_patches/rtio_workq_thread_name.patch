@@ -1,0 +1,22 @@
+diff --git a/subsys/rtio/rtio_workq.c b/subsys/rtio/rtio_workq.c
+index b063ead71a4..c6f7fab5800 100644
+--- a/subsys/rtio/rtio_workq.c
++++ b/subsys/rtio/rtio_workq.c
+@@ -15,6 +15,17 @@ K_P4WQ_DEFINE(rtio_workq,
+ 	      CONFIG_RTIO_WORKQ_THREADS_POOL,
+ 	      CONFIG_RTIO_WORKQ_STACK_SIZE);
+ 
++#ifdef CONFIG_THREAD_NAME
++static int rtio_workq_name_threads(void)
++{
++	for (int i = 0; i < CONFIG_RTIO_WORKQ_THREADS_POOL; i++) {
++		k_thread_name_set(&_p4threads_rtio_workq[i], "rtio_workq");
++	}
++	return 0;
++}
++SYS_INIT(rtio_workq_name_threads, APPLICATION, 99);
++#endif
++
+ K_MEM_SLAB_DEFINE_STATIC(rtio_work_items_slab,
+ 			 sizeof(struct rtio_work_req),
+ 			 CONFIG_RTIO_WORKQ_POOL_ITEMS,
