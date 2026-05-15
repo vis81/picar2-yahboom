@@ -7,6 +7,7 @@
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/sys/byteorder.h>
+#include <zephyr/shell/shell.h>
 #include "protocol.h"
 #include "comms.h"
 #include "motor.h"
@@ -33,6 +34,13 @@ static uint8_t js_seq;
 static struct k_timer stream_tmr[STREAM_MAX];
 static struct k_work  stream_wrk[STREAM_MAX];
 
+static uint32_t tx_frames[STREAM_MAX];
+static uint32_t rx_cmd_vel;
+static uint32_t rx_req;
+static uint32_t rx_set_rate;
+static uint32_t rx_unknown;
+static uint32_t rx_short;
+
 static void on_timeout(struct k_work *w);
 static K_WORK_DELAYABLE_DEFINE(watchdog_work, on_timeout);
 
@@ -43,6 +51,9 @@ static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
 
 	for (int i = 0; i < n; i++) {
 		uart_poll_out(pi_uart, frame[i]);
+	}
+	if (type < STREAM_MAX) {
+		tx_frames[type]++;
 	}
 }
 
@@ -138,8 +149,10 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 	switch (type) {
 	case MSG_CMD_VEL:
 		if (len < 5) {
+			rx_short++;
 			break;
 		}
+		rx_cmd_vel++;
 		motor_speed(MOTOR_L, (int32_t)(int16_t)sys_get_le16(&payload[0]));
 		motor_speed(MOTOR_R, (int32_t)(int16_t)sys_get_le16(&payload[2]));
 		servo_steer(payload[4]);
@@ -147,15 +160,19 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 
 	case MSG_REQ:
 		if (len < 1) {
+			rx_short++;
 			break;
 		}
+		rx_req++;
 		send_stream(payload[0]);
 		break;
 
 	case MSG_SET_RATE: {
 		if (len < 3) {
+			rx_short++;
 			break;
 		}
+		rx_set_rate++;
 		uint8_t id = payload[0];
 		uint16_t hz = sys_get_le16(&payload[1]);
 
@@ -175,6 +192,10 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		}
 		break;
 	}
+
+	default:
+		rx_unknown++;
+		break;
 	}
 }
 
@@ -190,3 +211,51 @@ void comms_init(void)
 
 	proto_init(pi_uart, comms_rx);
 }
+
+#ifdef CONFIG_SHELL
+
+static int cmd_comms_stats(const struct shell *sh, size_t argc, char **argv)
+{
+	struct proto_stats ps;
+
+	proto_get_stats(&ps);
+
+	shell_print(sh, "rx frames    %u", ps.rx_frames);
+	shell_print(sh, "rx crc_err   %u", ps.rx_crc_err);
+	shell_print(sh, "rx len_err   %u", ps.rx_len_err);
+	shell_print(sh, "rx short     %u", rx_short);
+	shell_print(sh, "rx unknown   %u", rx_unknown);
+	shell_print(sh, "rx cmd_vel   %u", rx_cmd_vel);
+	shell_print(sh, "rx req       %u", rx_req);
+	shell_print(sh, "rx set_rate  %u", rx_set_rate);
+	shell_print(sh, "tx joint     %u", tx_frames[STREAM_JOINT]);
+	shell_print(sh, "tx imu       %u", tx_frames[STREAM_IMU]);
+	shell_print(sh, "tx battery   %u", tx_frames[STREAM_BAT]);
+	shell_print(sh, "connected    %s", connected ? "yes" : "no");
+	return 0;
+}
+
+static int cmd_comms_stats_clear(const struct shell *sh, size_t argc, char **argv)
+{
+	proto_clear_stats();
+	rx_cmd_vel = rx_req = rx_set_rate = rx_unknown = rx_short = 0;
+	for (int i = 0; i < STREAM_MAX; i++) {
+		tx_frames[i] = 0;
+	}
+	shell_print(sh, "cleared");
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_comms_stats,
+	SHELL_CMD(clear, NULL, "Clear protocol statistics", cmd_comms_stats_clear),
+	SHELL_SUBCMD_SET_END
+);
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_comms,
+	SHELL_CMD(stats, &sub_comms_stats, "Print protocol statistics", cmd_comms_stats),
+	SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(comms, &sub_comms, "Comms commands", NULL);
+
+#endif /* CONFIG_SHELL */

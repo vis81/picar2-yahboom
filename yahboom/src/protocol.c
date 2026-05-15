@@ -14,6 +14,7 @@ RING_BUF_DECLARE(rx_ring, 256);
 
 static const struct device *proto_uart;
 static proto_rx_cb_t proto_cb;
+static struct proto_stats stats;
 
 static void rx_work_fn(struct k_work *w);
 static K_WORK_DEFINE(rx_work, rx_work_fn);
@@ -61,6 +62,7 @@ static void process_rx_byte(uint8_t b)
 		break;
 	case S_LEN:
 		if (b > PROTO_MAX_LEN) {
+			stats.rx_len_err++;
 			state = S_START;
 			break;
 		}
@@ -81,7 +83,10 @@ static void process_rx_byte(uint8_t b)
 		crc_data[1] = rx_len;
 		memcpy(&crc_data[2], rx_buf, rx_len);
 		if (b == crc8(crc_data, 2 + rx_len)) {
+			stats.rx_frames++;
 			proto_cb(rx_type, rx_buf, rx_len);
+		} else {
+			stats.rx_crc_err++;
 		}
 		state = S_START;
 		break;
@@ -110,6 +115,16 @@ static void uart_isr(const struct device *dev, void *user_data)
 			k_work_submit(&rx_work);
 		}
 	}
+}
+
+void proto_get_stats(struct proto_stats *out)
+{
+	*out = stats;
+}
+
+void proto_clear_stats(void)
+{
+	memset(&stats, 0, sizeof(stats));
 }
 
 void proto_init(const struct device *uart, proto_rx_cb_t cb)
