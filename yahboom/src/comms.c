@@ -21,12 +21,14 @@
 #define STREAM_JOINT  0x01
 #define STREAM_IMU    0x02
 #define STREAM_BAT    0x03
-#define STREAM_MAX    4    /* valid IDs: 1..3; index 0 unused */
+#define STREAM_STATS  0x04
+#define STREAM_MAX    4    /* valid IDs: 1..3; index 0 unused; STATS is one-shot */
 
 /* Pi → STM32 message types */
 #define MSG_CMD_VEL   0x80
 #define MSG_REQ       0x81
 #define MSG_SET_RATE  0x82
+#define MSG_GET_STATS 0x83
 
 static const struct device *pi_uart;
 static bool connected;
@@ -36,9 +38,6 @@ static struct k_timer stream_tmr[STREAM_MAX];
 static struct k_work  stream_wrk[STREAM_MAX];
 
 static uint32_t tx_frames[STREAM_MAX];
-static uint32_t rx_cmd_vel;
-static uint32_t rx_req;
-static uint32_t rx_set_rate;
 static uint32_t rx_unknown;
 static uint32_t rx_short;
 
@@ -110,6 +109,27 @@ static void send_battery(void)
 	send_frame(STREAM_BAT, payload, sizeof(payload));
 }
 
+static void send_stats(void)
+{
+	struct proto_stats ps;
+	uint8_t payload[24];
+	uint32_t tx_total = 0;
+
+	proto_get_stats(&ps);
+	for (int i = 1; i < STREAM_MAX; i++) {
+		tx_total += tx_frames[i];
+	}
+
+	sys_put_le32(ps.rx_frames,  &payload[0]);
+	sys_put_le32(ps.rx_crc_err, &payload[4]);
+	sys_put_le32(ps.rx_len_err, &payload[8]);
+	sys_put_le32(rx_short,      &payload[12]);
+	sys_put_le32(rx_unknown,    &payload[16]);
+	sys_put_le32(tx_total,      &payload[20]);
+
+	send_frame(STREAM_STATS, payload, sizeof(payload));
+}
+
 static void send_stream(uint8_t id)
 {
 	switch (id) {
@@ -153,7 +173,6 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 			rx_short++;
 			break;
 		}
-		rx_cmd_vel++;
 		motor_speed(MOTOR_L, (int32_t)(int16_t)sys_get_le16(&payload[0]));
 		motor_speed(MOTOR_R, (int32_t)(int16_t)sys_get_le16(&payload[2]));
 		servo_steer(payload[4]);
@@ -164,7 +183,6 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 			rx_short++;
 			break;
 		}
-		rx_req++;
 		send_stream(payload[0]);
 		break;
 
@@ -173,7 +191,6 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 			rx_short++;
 			break;
 		}
-		rx_set_rate++;
 		uint8_t id = payload[0];
 		uint16_t hz = sys_get_le16(&payload[1]);
 
@@ -193,6 +210,17 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		}
 		break;
 	}
+
+	case MSG_GET_STATS:
+		if (len >= 1 && payload[0]) {
+			proto_clear_stats();
+			rx_unknown = rx_short = 0;
+			for (int i = 0; i < STREAM_MAX; i++) {
+				tx_frames[i] = 0;
+			}
+		}
+		send_stats();
+		break;
 
 	default:
 		rx_unknown++;
@@ -218,28 +246,27 @@ void comms_init(void)
 static int cmd_comms_stats(const struct shell *sh, size_t argc, char **argv)
 {
 	struct proto_stats ps;
+	uint32_t tx_total = 0;
 
 	proto_get_stats(&ps);
+	for (int i = 1; i < STREAM_MAX; i++) {
+		tx_total += tx_frames[i];
+	}
 
-	shell_print(sh, "rx frames    %u", ps.rx_frames);
-	shell_print(sh, "rx crc_err   %u", ps.rx_crc_err);
-	shell_print(sh, "rx len_err   %u", ps.rx_len_err);
-	shell_print(sh, "rx short     %u", rx_short);
-	shell_print(sh, "rx unknown   %u", rx_unknown);
-	shell_print(sh, "rx cmd_vel   %u", rx_cmd_vel);
-	shell_print(sh, "rx req       %u", rx_req);
-	shell_print(sh, "rx set_rate  %u", rx_set_rate);
-	shell_print(sh, "tx joint     %u", tx_frames[STREAM_JOINT]);
-	shell_print(sh, "tx imu       %u", tx_frames[STREAM_IMU]);
-	shell_print(sh, "tx battery   %u", tx_frames[STREAM_BAT]);
-	shell_print(sh, "connected    %s", connected ? "yes" : "no");
+	shell_print(sh, "rx frames   %u", ps.rx_frames);
+	shell_print(sh, "rx crc_err  %u", ps.rx_crc_err);
+	shell_print(sh, "rx len_err  %u", ps.rx_len_err);
+	shell_print(sh, "rx short    %u", rx_short);
+	shell_print(sh, "rx unknown  %u", rx_unknown);
+	shell_print(sh, "tx frames   %u", tx_total);
+	shell_print(sh, "connected   %s", connected ? "yes" : "no");
 	return 0;
 }
 
 static int cmd_comms_stats_clear(const struct shell *sh, size_t argc, char **argv)
 {
 	proto_clear_stats();
-	rx_cmd_vel = rx_req = rx_set_rate = rx_unknown = rx_short = 0;
+	rx_unknown = rx_short = 0;
 	for (int i = 0; i < STREAM_MAX; i++) {
 		tx_frames[i] = 0;
 	}
