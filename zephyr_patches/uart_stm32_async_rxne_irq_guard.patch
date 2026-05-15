@@ -1,0 +1,14 @@
+diff --git a/drivers/serial/uart_stm32.c b/drivers/serial/uart_stm32.c
+index 10e5b310d8f..2f49227e890 100644
+--- a/drivers/serial/uart_stm32.c
++++ b/drivers/serial/uart_stm32.c
+@@ -1287,7 +1287,8 @@ static void uart_stm32_isr(const struct device *dev)
+ #ifdef CONFIG_PM
+ 		uart_stm32_pm_policy_state_lock_put(dev);
+ #endif
+-	} else if (LL_USART_IsEnabledIT_RXNE(usart) &&
++	} else if (!data->user_cb &&
++			LL_USART_IsEnabledIT_RXNE(usart) &&
+ 			LL_USART_IsActiveFlag_RXNE(usart)) {
+ #ifdef USART_SR_RXNE
+ 		/* clear the RXNE flag, because Rx data was not read */
