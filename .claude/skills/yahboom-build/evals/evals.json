@@ -1,0 +1,40 @@
+{
+  "skill_name": "picar2-build",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "make flash is failing with 'stm32flash: failed to init device', what should I check?",
+      "expected_output": "Explains that the board needs to be in ROM bootloader mode first (via 'sys bootloader' shell command or BOOT0 pin procedure), and also mentions checking if /dev/ttyYahboom0 is held open by another process.",
+      "files": [],
+      "assertions": [
+        {"text": "Mentions that the board must be in ROM bootloader mode as the primary cause"},
+        {"text": "Mentions the 'sys bootloader' shell command as the preferred way to enter bootloader mode"},
+        {"text": "Mentions checking if /dev/ttyYahboom0 is held open by another process (lsof or fuser)"},
+        {"text": "Uses correct project-specific port name /dev/ttyYahboom0 (not generic /dev/ttyUSB0)"}
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "I opened a new terminal and now make says west: command not found",
+      "expected_output": "Identifies the cause as the venv not being active, gives the fix: cd to ~/PICAR2/picar2_ws/yahboom and run 'source activate.sh'.",
+      "files": [],
+      "assertions": [
+        {"text": "Identifies cause as the Python virtual environment not being active"},
+        {"text": "Gives 'source activate.sh' as the fix (not a generic venv activate path)"},
+        {"text": "Mentions the correct workspace path ~/PICAR2/picar2_ws/yahboom"}
+      ]
+    },
+    {
+      "id": 2,
+      "prompt": "walk me through building and flashing the firmware from a fresh terminal",
+      "expected_output": "Covers: cd to workspace, source activate.sh, make, enter bootloader (sys bootloader via ttyYahboom1 at 921600), make flash. Mentions ttyYahboom1 for shell and ttyYahboom0 for flashing.",
+      "files": [],
+      "assertions": [
+        {"text": "'source activate.sh' is the first step with the correct path ~/PICAR2/picar2_ws/yahboom"},
+        {"text": "Mentions /dev/ttyYahboom1 at 921600 baud as the serial console port"},
+        {"text": "Mentions 'sys bootloader' shell command as the way to enter bootloader mode before flashing"},
+        {"text": "Does NOT tell the user to use ST-Link or OpenOCD for flashing (flash is via stm32flash)"}
+      ]
+    }
+  ]
+}
