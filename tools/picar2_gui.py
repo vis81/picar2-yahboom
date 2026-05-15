@@ -40,6 +40,9 @@ TYPE_BAT   = 0x03
 MSG_CMD_VEL  = 0x80
 MSG_REQ      = 0x81
 MSG_SET_RATE = 0x82
+MSG_GET_STATS = 0x83
+
+TYPE_STATS = 0x04
 
 STREAM_NAMES  = {TYPE_JOINT: "JOINT_STATE", TYPE_IMU: "IMU", TYPE_BAT: "BATTERY"}
 STREAM_LABELS = {TYPE_JOINT: "JOINT",       TYPE_IMU: "IMU", TYPE_BAT: "BAT  "}
@@ -74,6 +77,9 @@ def enc_req(stream_id: int) -> bytes:
 def enc_set_rate(stream_id: int, hz: int) -> bytes:
     return _frame(MSG_SET_RATE, struct.pack("<BH", stream_id, hz))
 
+def enc_get_stats(clear: bool = False) -> bytes:
+    return _frame(MSG_GET_STATS, bytes([1]) if clear else b"")
+
 
 # ── Frame decoding ────────────────────────────────────────────────────────────
 
@@ -94,7 +100,19 @@ def decode_bat(payload: bytes) -> dict:
     mv, pct, _ = struct.unpack("<HBB", payload[:4])
     return {"voltage_mv": mv, "charge_pct": pct}
 
-DECODERS = {TYPE_JOINT: decode_joint, TYPE_IMU: decode_imu, TYPE_BAT: decode_bat}
+def decode_stats(payload: bytes) -> dict:
+    fields = struct.unpack_from("<6I", payload, 0)
+    return {
+        "rx_frames":  fields[0],
+        "rx_crc_err": fields[1],
+        "rx_len_err": fields[2],
+        "rx_short":   fields[3],
+        "rx_unknown": fields[4],
+        "tx_frames":  fields[5],
+    }
+
+DECODERS = {TYPE_JOINT: decode_joint, TYPE_IMU: decode_imu,
+            TYPE_BAT: decode_bat, TYPE_STATS: decode_stats}
 
 
 # ── Receiver thread ───────────────────────────────────────────────────────────
@@ -184,6 +202,7 @@ class App(tk.Tk):
         self._tx_req      = 0
         self._tx_set_rate = 0
         self._rx_stream   = {t: 0 for t in STREAM_NAMES}
+        self._last_fw_stats_req = 0.0
 
         self._build_ui(default_port, default_baud)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
@@ -231,6 +250,28 @@ class App(tk.Tk):
         ttk.Button(sf, text="Clear", command=self._clear_stats).pack(
             side="right", padx=8, pady=4)
 
+        ttk.Separator(sf, orient="horizontal").pack(fill="x", padx=6, pady=(2, 0))
+
+        fw = ttk.LabelFrame(sf, text="Firmware (STM32)")
+        fw.pack(fill="x", padx=6, pady=(4, 4))
+
+        fw1 = ttk.Frame(fw)
+        fw1.pack(fill="x")
+
+        def _fw(parent, text, col, row=0, width=None):
+            kw = {"width": width} if width else {}
+            l = ttk.Label(parent, text=text, **kw)
+            l.grid(row=row, column=col, sticky="w", padx=(6, 2), pady=2)
+            return l
+
+        _fw(fw1, "rx frames:",  0); self._fw_rx_frames  = _fw(fw1, "—",  1, width=8)
+        _fw(fw1, "crc_err:",    2); self._fw_rx_crc_err = _fw(fw1, "—",  3, width=6)
+        _fw(fw1, "len_err:",    4); self._fw_rx_len_err = _fw(fw1, "—",  5, width=6)
+        _fw(fw1, "short:",      6); self._fw_rx_short   = _fw(fw1, "—",  7, width=6)
+        _fw(fw1, "unknown:",    8); self._fw_rx_unknown = _fw(fw1, "—",  9, width=6)
+        _fw(fw1, "tx frames:", 10); self._fw_tx_frames  = _fw(fw1, "—", 11, width=8)
+
+
     def _clear_stats(self):
         if self._rx:
             self._rx.clear_stats()
@@ -238,6 +279,8 @@ class App(tk.Tk):
         self._rx_stream = {t: 0 for t in STREAM_NAMES}
         for dq in self._rate_dq.values():
             dq.clear()
+        if self._ser:
+            self._write(enc_get_stats(clear=True))
 
     def _build_connection_bar(self, default_port: str, default_baud: int):
         bar = ttk.LabelFrame(self, text="Connection")
@@ -456,6 +499,9 @@ class App(tk.Tk):
         for sid in STREAM_NAMES:
             self._set_stream_rate(sid)
 
+    def _request_fw_stats(self):
+        self._write(enc_get_stats())
+
     # ── Poll / display update (GUI thread, every 100 ms) ─────────────────────
 
     def _poll(self):
@@ -468,10 +514,24 @@ class App(tk.Tk):
                         self._rx_stream[msg_type] += 1
                         if decoded is not None:
                             self._refresh_stream(msg_type, decoded)
+                    elif msg_type == TYPE_STATS and decoded is not None:
+                        self._refresh_fw_stats(decoded)
             except queue.Empty:
                 pass
             self._refresh_stats()
+            now = time.monotonic()
+            if now - self._last_fw_stats_req >= 1.0:
+                self._request_fw_stats()
+                self._last_fw_stats_req = now
         self.after(100, self._poll)
+
+    def _refresh_fw_stats(self, d: dict):
+        self._fw_rx_frames.config( text=str(d["rx_frames"]))
+        self._fw_rx_crc_err.config(text=str(d["rx_crc_err"]))
+        self._fw_rx_len_err.config(text=str(d["rx_len_err"]))
+        self._fw_rx_short.config(  text=str(d["rx_short"]))
+        self._fw_rx_unknown.config(text=str(d["rx_unknown"]))
+        self._fw_tx_frames.config( text=str(d["tx_frames"]))
 
     def _refresh_stats(self):
         rx = self._rx
