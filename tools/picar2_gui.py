@@ -109,6 +109,13 @@ class Receiver(threading.Thread):
         self._state = self._S_START
         self._type = self._len = 0
         self._buf = bytearray()
+        self.rx_frames      = 0
+        self.rx_crc_err     = 0
+        self.rx_len_err     = 0
+        self.rx_decode_err  = 0
+
+    def clear_stats(self):
+        self.rx_frames = self.rx_crc_err = self.rx_len_err = self.rx_decode_err = 0
 
     def run(self):
         while True:
@@ -129,6 +136,7 @@ class Receiver(threading.Thread):
             self._state = self._S_LEN
         elif s == self._S_LEN:
             if b > 32:
+                self.rx_len_err += 1
                 self._state = self._S_START
                 return
             self._len = b
@@ -141,13 +149,16 @@ class Receiver(threading.Thread):
         elif s == self._S_CRC:
             expected = crc8(bytes([self._type, self._len]) + bytes(self._buf))
             if b == expected:
+                self.rx_frames += 1
                 decoded = None
                 if self._type in DECODERS:
                     try:
                         decoded = DECODERS[self._type](bytes(self._buf))
                     except Exception:
-                        pass
+                        self.rx_decode_err += 1
                 self.q.put((self._type, bytes(self._buf), decoded))
+            else:
+                self.rx_crc_err += 1
             self._state = self._S_START
 
 
@@ -169,6 +180,11 @@ class App(tk.Tk):
 
         self._rate_dq = {t: collections.deque(maxlen=50) for t in STREAM_NAMES}
 
+        self._tx_cmd_vel  = 0
+        self._tx_req      = 0
+        self._tx_set_rate = 0
+        self._rx_stream   = {t: 0 for t in STREAM_NAMES}
+
         self._build_ui(default_port, default_baud)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._poll()
@@ -179,9 +195,49 @@ class App(tk.Tk):
         self._build_connection_bar(default_port, default_baud)
 
         body = ttk.Frame(self)
-        body.pack(fill="both", expand=True, padx=8, pady=(0, 8))
+        body.pack(fill="both", expand=True, padx=8, pady=(0, 4))
         self._build_control_panel(body)
         self._build_streams_panel(body)
+
+        self._build_stats_panel()
+
+    def _build_stats_panel(self):
+        sf = ttk.LabelFrame(self, text="Comms stats")
+        sf.pack(fill="x", padx=8, pady=(0, 8))
+
+        def _lbl(parent, text, col, row=0, width=None):
+            kw = {"width": width} if width else {}
+            l = ttk.Label(parent, text=text, **kw)
+            l.grid(row=row, column=col, sticky="w", padx=(6, 2), pady=3)
+            return l
+
+        row1 = ttk.Frame(sf)
+        row1.pack(fill="x")
+        row2 = ttk.Frame(sf)
+        row2.pack(fill="x")
+
+        _lbl(row1, "rx frames:",    0); self._stat_rx_frames     = _lbl(row1, "0",  1, width=8)
+        _lbl(row1, "crc_err:",      2); self._stat_rx_crc_err    = _lbl(row1, "0",  3, width=6)
+        _lbl(row1, "len_err:",      4); self._stat_rx_len_err    = _lbl(row1, "0",  5, width=6)
+        _lbl(row1, "decode_err:",   6); self._stat_rx_decode_err = _lbl(row1, "0",  7, width=6)
+        _lbl(row1, "rx joint:",     8); self._stat_tx_joint      = _lbl(row1, "0",  9, width=8)
+        _lbl(row1, "rx imu:",      10); self._stat_tx_imu        = _lbl(row1, "0", 11, width=8)
+        _lbl(row1, "rx battery:",  12); self._stat_tx_bat        = _lbl(row1, "0", 13, width=8)
+
+        _lbl(row2, "tx cmd_vel:",  0); self._stat_tx_cmd_vel  = _lbl(row2, "0", 1, width=8)
+        _lbl(row2, "tx req:",      2); self._stat_tx_req      = _lbl(row2, "0", 3, width=6)
+        _lbl(row2, "tx set_rate:", 4); self._stat_tx_set_rate = _lbl(row2, "0", 5, width=6)
+
+        ttk.Button(sf, text="Clear", command=self._clear_stats).pack(
+            side="right", padx=8, pady=4)
+
+    def _clear_stats(self):
+        if self._rx:
+            self._rx.clear_stats()
+        self._tx_cmd_vel = self._tx_req = self._tx_set_rate = 0
+        self._rx_stream = {t: 0 for t in STREAM_NAMES}
+        for dq in self._rate_dq.values():
+            dq.clear()
 
     def _build_connection_bar(self, default_port: str, default_baud: int):
         bar = ttk.LabelFrame(self, text="Connection")
@@ -320,6 +376,8 @@ class App(tk.Tk):
         self._rx.start()
         for dq in self._rate_dq.values():
             dq.clear()
+        self._tx_cmd_vel = self._tx_req = self._tx_set_rate = 0
+        self._rx_stream  = {t: 0 for t in STREAM_NAMES}
         self._conn_btn.config(text="Disconnect")
         self._status_lbl.config(text="● CONNECTED", fg="green")
 
@@ -384,11 +442,13 @@ class App(tk.Tk):
                 self._right_var.get(),
                 self._steer_var.get(),
             ))
+            self._tx_cmd_vel += 1
             self._sender_stop.wait(1.0 / hz)
 
     def _set_stream_rate(self, sid: int):
         hz = int(self._stream_rate_vars[sid].get())
         self._write(enc_set_rate(sid, hz))
+        self._tx_set_rate += 1
         if hz == 0:
             self._rate_dq[sid].clear()
 
@@ -405,11 +465,26 @@ class App(tk.Tk):
                     msg_type, _, decoded = self._rx.q.get_nowait()
                     if msg_type in STREAM_NAMES:
                         self._rate_dq[msg_type].append(time.monotonic())
+                        self._rx_stream[msg_type] += 1
                         if decoded is not None:
                             self._refresh_stream(msg_type, decoded)
             except queue.Empty:
                 pass
+            self._refresh_stats()
         self.after(100, self._poll)
+
+    def _refresh_stats(self):
+        rx = self._rx
+        self._stat_rx_frames.config(    text=str(rx.rx_frames     if rx else 0))
+        self._stat_rx_crc_err.config(   text=str(rx.rx_crc_err    if rx else 0))
+        self._stat_rx_len_err.config(   text=str(rx.rx_len_err    if rx else 0))
+        self._stat_rx_decode_err.config(text=str(rx.rx_decode_err if rx else 0))
+        self._stat_tx_joint.config(  text=str(self._rx_stream[TYPE_JOINT]))
+        self._stat_tx_imu.config(    text=str(self._rx_stream[TYPE_IMU]))
+        self._stat_tx_bat.config(    text=str(self._rx_stream[TYPE_BAT]))
+        self._stat_tx_cmd_vel.config( text=str(self._tx_cmd_vel))
+        self._stat_tx_req.config(     text=str(self._tx_req))
+        self._stat_tx_set_rate.config(text=str(self._tx_set_rate))
 
     def _refresh_stream(self, sid: int, data: dict):
         rate_lbl, data_lbl = self._stream_widgets[sid]
