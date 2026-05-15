@@ -196,7 +196,7 @@ class App(tk.Tk):
         ttk.Label(bar, text="Baud:").grid(row=0, column=2, padx=(8, 2))
         self._baud_var = tk.StringVar(value=str(default_baud))
         ttk.Combobox(bar, textvariable=self._baud_var, width=9,
-                     values=["115200", "921600"]).grid(row=0, column=3, padx=2)
+                     values=["115200", "460800", "921600"]).grid(row=0, column=3, padx=2)
 
         self._conn_btn = ttk.Button(bar, text="Connect", command=self._toggle_connect)
         self._conn_btn.grid(row=0, column=4, padx=(8, 4))
@@ -453,7 +453,7 @@ class App(tk.Tk):
 def main():
     parser = argparse.ArgumentParser(description="PICAR-2 GUI controller")
     parser.add_argument("--port", default="/dev/ttyYahboom0")
-    parser.add_argument("--baud", type=int, default=921600)
+    parser.add_argument("--baud", type=int, default=460800)
     args = parser.parse_args()
 
     App(args.port, args.baud).mainloop()

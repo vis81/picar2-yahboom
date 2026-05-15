@@ -383,7 +383,7 @@ def main():
     parser = argparse.ArgumentParser(description="PICAR-2 protocol verification")
     parser.add_argument("--port", default="/dev/ttyYahboom0",
                         help="Serial port connected to STM32 USART1 (default: /dev/ttyYahboom0)")
-    parser.add_argument("--baud", type=int, default=921600)
+    parser.add_argument("--baud", type=int, default=460800)
     args = parser.parse_args()
 
     print(f"\nPICAR-2 protocol verification  —  {args.port} @ {args.baud} baud")
