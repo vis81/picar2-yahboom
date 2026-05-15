@@ -6,7 +6,7 @@ Runs sequential tests against the STM32 firmware over USART1.
 
 Usage:
     python3 tests/integration/test_protocol.py
-    python3 tests/integration/test_protocol.py --port /dev/ttyUSB0 --baud 921600
+    python3 tests/integration/test_protocol.py --port /dev/ttyUSB0 --baud 460800
 """
 
 import argparse
@@ -15,7 +15,6 @@ import struct
 import sys
 import threading
 import time
-from collections import Counter
 
 import serial
 
@@ -26,10 +25,12 @@ PROTO_START = 0xAA
 TYPE_JOINT = 0x01
 TYPE_IMU   = 0x02
 TYPE_BAT   = 0x03
+TYPE_STATS = 0x04
 
-MSG_CMD_VEL  = 0x80
-MSG_REQ      = 0x81
-MSG_SET_RATE = 0x82
+MSG_CMD_VEL   = 0x80
+MSG_REQ       = 0x81
+MSG_SET_RATE  = 0x82
+MSG_GET_STATS = 0x83
 
 STREAM_NAMES = {TYPE_JOINT: "JOINT_STATE", TYPE_IMU: "IMU", TYPE_BAT: "BATTERY"}
 
@@ -60,6 +61,9 @@ def req(stream_id: int) -> bytes:
 def set_rate(stream_id: int, hz: int) -> bytes:
     return frame(MSG_SET_RATE, struct.pack("<BH", stream_id, hz))
 
+def get_stats(clear: bool = False) -> bytes:
+    return frame(MSG_GET_STATS, bytes([1]) if clear else b"")
+
 
 # ── Frame decoding ────────────────────────────────────────────────────────────
 
@@ -80,7 +84,23 @@ def decode_bat(payload: bytes) -> dict:
     mv, pct, _ = struct.unpack("<HBB", payload[:4])
     return {"voltage_mv": mv, "charge_pct": pct}
 
-DECODERS = {TYPE_JOINT: decode_joint, TYPE_IMU: decode_imu, TYPE_BAT: decode_bat}
+def decode_stats(payload: bytes) -> dict:
+    fields = struct.unpack_from("<6I", payload, 0)
+    return {
+        "rx_frames":  fields[0],
+        "rx_crc_err": fields[1],
+        "rx_len_err": fields[2],
+        "rx_short":   fields[3],
+        "rx_unknown": fields[4],
+        "tx_frames":  fields[5],
+    }
+
+DECODERS = {
+    TYPE_JOINT: decode_joint,
+    TYPE_IMU:   decode_imu,
+    TYPE_BAT:   decode_bat,
+    TYPE_STATS: decode_stats,
+}
 
 
 # ── Receiver thread ───────────────────────────────────────────────────────────
@@ -97,6 +117,9 @@ class Receiver(threading.Thread):
         self._state = self._S_START
         self._type = self._len = 0
         self._buf = bytearray()
+        self.rx_frames     = 0
+        self.rx_crc_err    = 0
+        self.rx_decode_err = 0
 
     def run(self):
         while True:
@@ -129,13 +152,16 @@ class Receiver(threading.Thread):
         elif s == self._S_CRC:
             expected = crc8(bytes([self._type, self._len]) + bytes(self._buf))
             if b == expected:
+                self.rx_frames += 1
                 decoded = None
                 if self._type in DECODERS:
                     try:
                         decoded = DECODERS[self._type](bytes(self._buf))
                     except Exception:
-                        pass
+                        self.rx_decode_err += 1
                 self.q.put((self._type, bytes(self._buf), decoded))
+            else:
+                self.rx_crc_err += 1
             self._state = self._S_START
 
     def recv(self, timeout: float = 1.0):
@@ -208,6 +234,33 @@ def send_cmd_vel_background(ser: serial.Serial, left=0, right=0, steer=50):
     t.start()
     return stop, t
 
+def fetch_stats(ser: serial.Serial, rx: Receiver,
+                clear: bool = False, timeout: float = 2.0) -> dict | None:
+    """Send MSG_GET_STATS and return decoded dict, or None on timeout."""
+    safe_write(ser, get_stats(clear=clear))
+    item = rx.recv_type(TYPE_STATS, timeout=timeout)
+    return item[2] if item and item[2] else None
+
+def stop_all_streams(ser: serial.Serial):
+    for sid in (TYPE_JOINT, TYPE_IMU, TYPE_BAT):
+        safe_write(ser, set_rate(sid, 0))
+
+def halt_motors(ser: serial.Serial):
+    safe_write(ser, cmd_vel(0, 0, 50))
+
+def seq_gaps(frames: list) -> tuple[int, int]:
+    """Return (gap_count, missing_frame_count) from JOINT_STATE seq fields."""
+    seqs = [f[2]["seq"] for f in frames if f[0] == TYPE_JOINT and f[2]]
+    if len(seqs) < 2:
+        return 0, 0
+    n_gaps = n_missing = 0
+    for i in range(1, len(seqs)):
+        delta = (seqs[i] - seqs[i - 1]) % 256
+        if delta > 1:
+            n_gaps  += 1
+            n_missing += delta - 1
+    return n_gaps, n_missing
+
 
 # ── Individual tests ──────────────────────────────────────────────────────────
 
@@ -263,9 +316,6 @@ def test_set_rate(ser: serial.Serial, rx: Receiver):
     check("REQ(IMU) works while periodic is active", f is not None)
 
     # ── Disable IMU ────────────────────────────────────────────────────────────
-    # Send stop command several times with gaps so that even if the system
-    # workqueue is briefly occupied by a sensor_sample_fetch I2C call, at
-    # least one SET_RATE(0) is processed before the drain window.
     for _ in range(3):
         safe_write(ser, set_rate(TYPE_IMU, 0))
         time.sleep(0.15)
@@ -291,8 +341,7 @@ def test_set_rate(ser: serial.Serial, rx: Receiver):
         print(f"  {INFO}   battery: {bat[0][2]}")
 
     # ── Clean up ───────────────────────────────────────────────────────────────
-    safe_write(ser, set_rate(TYPE_JOINT, 0))
-    safe_write(ser, set_rate(TYPE_BAT, 0))
+    stop_all_streams(ser)
     time.sleep(0.1)
     rx.flush()
 
@@ -334,7 +383,8 @@ def test_cmd_vel_motors(ser: serial.Serial, rx: Receiver):
         check("Steering echoed correctly in JOINT_STATE",
               f[2]["steering"] == 20, f"got {f[2]['steering']}")
 
-    safe_write(ser, set_rate(TYPE_JOINT, 0))
+    stop_all_streams(ser)
+    halt_motors(ser)
     time.sleep(0.1)
     rx.flush()
 
@@ -377,6 +427,188 @@ def test_bad_crc(ser: serial.Serial, rx: Receiver):
     check("Firmware responds to valid frame after bad-CRC frame", f is not None)
 
 
+def test_get_stats(ser: serial.Serial, rx: Receiver):
+    section("8 · MSG_GET_STATS — firmware reports and clears counters")
+    rx.flush()
+
+    # Establish connection
+    stop, bg = send_cmd_vel_background(ser)
+    time.sleep(0.3)
+    stop.set(); bg.join(timeout=0.2)
+
+    # Baseline: fetch without clear, verify response arrives and fields look sane
+    s = fetch_stats(ser, rx)
+    ok = check("STREAM_STATS received", s is not None)
+    if not ok:
+        return
+    print(f"  {INFO} rx_frames={s['rx_frames']}  crc_err={s['rx_crc_err']}  "
+          f"tx_frames={s['tx_frames']}")
+    check("rx_frames > 0 after earlier tests", s["rx_frames"] > 0,
+          f"got {s['rx_frames']}")
+
+    # Clear: firmware clears before sending, so response must be all zeros
+    s2 = fetch_stats(ser, rx, clear=True)
+    ok = check("STREAM_STATS received after clear", s2 is not None)
+    if ok:
+        bad = {k: v for k, v in s2.items() if v != 0}
+        check("All counters zero after clear", not bad,
+              " ".join(f"{k}={v}" for k, v in bad.items()))
+
+    # Confirm counters increment again after clear
+    for _ in range(5):
+        safe_write(ser, req(TYPE_JOINT))
+        rx.recv_type(TYPE_JOINT, timeout=0.5)
+    s3 = fetch_stats(ser, rx)
+    if s3:
+        check("rx_frames increments after clear", s3["rx_frames"] > 0,
+              f"got {s3['rx_frames']}")
+        check("rx_crc_err zero on clean link", s3["rx_crc_err"] == 0,
+              f"got {s3['rx_crc_err']}")
+
+
+def test_stress_rx(ser: serial.Serial, rx: Receiver):
+    section("9 · Stress RX — firmware handles sustained frame flood")
+    rx.flush()
+
+    # Establish connection, then clear stats baseline
+    stop, bg = send_cmd_vel_background(ser)
+    time.sleep(0.3)
+    stop.set(); bg.join(timeout=0.2)
+    fetch_stats(ser, rx, clear=True)
+    rx.flush()
+
+    # Flood: CMD_VEL only at 300 Hz for 3 s (3× normal max, ~18% of 460800 baud).
+    # No REQ — TX-response contention is covered by test_stress_bidir.
+    # Deadline loop keeps rate steady regardless of Python timer jitter.
+    hz = 300
+    interval = 1.0 / hz
+    t_next = time.monotonic()
+    t_end  = t_next + 3.0
+    sent = 0
+    while t_next < t_end:
+        safe_write(ser, cmd_vel(0, 0, 50))
+        sent += 1
+        t_next += interval
+        wait = t_next - time.monotonic()
+        if wait > 0:
+            time.sleep(wait)
+
+    time.sleep(0.1)  # allow last frames to land
+    s = fetch_stats(ser, rx)
+
+    ok = check("Stats received after RX stress", s is not None)
+    if not ok:
+        halt_motors(ser)
+        return
+
+    print(f"  {INFO} sent≈{sent}  fw_rx={s['rx_frames']}  "
+          f"crc_err={s['rx_crc_err']}  len_err={s['rx_len_err']}")
+    check("No CRC errors under RX flood",    s["rx_crc_err"] == 0,
+          f"got {s['rx_crc_err']}")
+    check("No length errors under RX flood", s["rx_len_err"] == 0,
+          f"got {s['rx_len_err']}")
+
+    halt_motors(ser)
+    time.sleep(0.1)
+    rx.flush()
+
+
+def test_stress_tx(ser: serial.Serial, rx: Receiver):
+    section("10 · Stress TX — Pi receives sustained high-rate streams")
+    rx.flush()
+
+    decode_err_before = rx.rx_decode_err
+
+    # Keep watchdog alive during drain
+    stop, bg = send_cmd_vel_background(ser)
+    time.sleep(0.2)
+    rx.flush()
+
+    # JOINT at 200 Hz + IMU at 100 Hz for 3 s
+    safe_write(ser, set_rate(TYPE_JOINT, 200))
+    safe_write(ser, set_rate(TYPE_IMU,   100))
+    time.sleep(0.05)
+
+    frames = rx.drain(3.0)
+    stop.set(); bg.join(timeout=0.2)
+
+    js  = [f for f in frames if f[0] == TYPE_JOINT]
+    imu = [f for f in frames if f[0] == TYPE_IMU]
+
+    print(f"  {INFO} JOINT={len(js)} (expect ~600)  IMU={len(imu)} (expect ~300)")
+    check("JOINT_STATE 200 Hz: 540–660 in 3 s", 540 <= len(js) <= 660,
+          f"got {len(js)}")
+    check("IMU 100 Hz: 270–330 in 3 s",         270 <= len(imu) <= 330,
+          f"got {len(imu)}")
+
+    n_gaps, n_missing = seq_gaps(js)
+    check("No JOINT_STATE seq gaps (no dropped TX frames)", n_missing == 0,
+          f"{n_gaps} gap(s), {n_missing} missing" if n_missing else "")
+
+    new_errs = rx.rx_decode_err - decode_err_before
+    check("No Pi-side decode errors", new_errs == 0, f"got {new_errs}")
+
+    stop_all_streams(ser)
+    halt_motors(ser)
+    time.sleep(0.1)
+    rx.flush()
+
+
+def test_stress_bidir(ser: serial.Serial, rx: Receiver):
+    section("11 · Stress bidirectional — full-duplex sustained load")
+    rx.flush()
+
+    decode_err_before = rx.rx_decode_err
+    fetch_stats(ser, rx, clear=True)
+    rx.flush()
+
+    # CMD_VEL at 100 Hz keeps watchdog alive and loads the RX path
+    stop, bg = send_cmd_vel_background(ser)
+    time.sleep(0.1)
+
+    safe_write(ser, set_rate(TYPE_JOINT, 100))
+    safe_write(ser, set_rate(TYPE_IMU,   50))
+    safe_write(ser, set_rate(TYPE_BAT,   1))
+    time.sleep(0.05)
+
+    frames = rx.drain(5.0)
+    stop.set(); bg.join(timeout=0.2)
+
+    js  = [f for f in frames if f[0] == TYPE_JOINT]
+    imu = [f for f in frames if f[0] == TYPE_IMU]
+    bat = [f for f in frames if f[0] == TYPE_BAT]
+
+    print(f"  {INFO} JOINT={len(js)}  IMU={len(imu)}  BAT={len(bat)}")
+    check("JOINT_STATE 100 Hz: 450–550 in 5 s", 450 <= len(js) <= 550,
+          f"got {len(js)}")
+    check("IMU 50 Hz: 225–275 in 5 s",          225 <= len(imu) <= 275,
+          f"got {len(imu)}")
+    check("BATTERY 1 Hz: 2–7 in 5 s",           2 <= len(bat) <= 7,
+          f"got {len(bat)}")
+
+    n_gaps, n_missing = seq_gaps(js)
+    check("No JOINT_STATE seq gaps under bidir load", n_missing == 0,
+          f"{n_gaps} gap(s), {n_missing} missing" if n_missing else "")
+
+    new_errs = rx.rx_decode_err - decode_err_before
+    check("No Pi-side decode errors under bidir load", new_errs == 0,
+          f"got {new_errs}")
+
+    s = fetch_stats(ser, rx)
+    if s:
+        print(f"  {INFO} fw rx_frames={s['rx_frames']}  crc_err={s['rx_crc_err']}  "
+              f"len_err={s['rx_len_err']}  tx_frames={s['tx_frames']}")
+        check("No FW CRC errors under bidir load",    s["rx_crc_err"] == 0,
+              f"got {s['rx_crc_err']}")
+        check("No FW length errors under bidir load", s["rx_len_err"] == 0,
+              f"got {s['rx_len_err']}")
+
+    stop_all_streams(ser)
+    halt_motors(ser)
+    time.sleep(0.1)
+    rx.flush()
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -400,8 +632,7 @@ def main():
     time.sleep(0.2)
     rx.flush()
 
-    for sid in (TYPE_JOINT, TYPE_IMU, TYPE_BAT):
-        safe_write(ser, set_rate(sid, 0))
+    stop_all_streams(ser)
     time.sleep(0.2)
     rx.flush()
 
@@ -413,10 +644,13 @@ def main():
         test_cmd_vel_motors(ser, rx)
         test_watchdog(ser, rx)
         test_bad_crc(ser, rx)
+        test_get_stats(ser, rx)
+        test_stress_rx(ser, rx)
+        test_stress_tx(ser, rx)
+        test_stress_bidir(ser, rx)
     finally:
-        for sid in (TYPE_JOINT, TYPE_IMU, TYPE_BAT):
-            safe_write(ser, set_rate(sid, 0))
-        safe_write(ser, cmd_vel(0, 0, 50))
+        stop_all_streams(ser)
+        halt_motors(ser)
         time.sleep(0.05)
         ser.close()
 
