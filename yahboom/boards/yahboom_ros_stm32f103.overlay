@@ -156,6 +156,16 @@
 
 };
 
+/* Shell console: switch to DMA async RX+TX so the DMA controller handles
+ * each byte without a per-byte ISR.  At 921600 baud the one-byte window is
+ * only 10.85 µs; any zero-latency timer preemption causes ORE in IRQ mode.
+ * STM32F103 DMA1: CH3 = USART3 RX, CH2 = USART3 TX (SPI1 not used). */
+&usart3 {
+	dmas = <&dma1 3 (STM32_DMA_PERIPH_RX | STM32_DMA_PRIORITY_HIGH)>,
+	       <&dma1 2 (STM32_DMA_PERIPH_TX | STM32_DMA_PRIORITY_HIGH)>;
+	dma-names = "rx", "tx";
+};
+
 &usart2 {
 	status = "okay";
 	rc: sbus {
