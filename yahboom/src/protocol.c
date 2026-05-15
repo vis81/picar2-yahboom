@@ -24,6 +24,7 @@ static K_WORK_DEFINE(rx_work, rx_work_fn);
 
 static uint8_t dma_rx_buf[2][DMA_BUF_SIZE];
 static uint8_t dma_buf_idx;
+static bool rx_paused;
 
 static uint8_t crc8(const uint8_t *buf, size_t len)
 {
@@ -126,10 +127,11 @@ static void uart_async_cb(const struct device *dev, struct uart_event *evt,
 	case UART_RX_BUF_RELEASED:
 		break;
 	case UART_RX_DISABLED:
-		/* Re-arm after overrun or explicit disable */
-		dma_buf_idx = 0;
-		uart_rx_enable(dev, dma_rx_buf[0], DMA_BUF_SIZE,
-			       RX_IDLE_TIMEOUT_US);
+		if (!rx_paused) {
+			dma_buf_idx = 0;
+			uart_rx_enable(dev, dma_rx_buf[0], DMA_BUF_SIZE,
+				       RX_IDLE_TIMEOUT_US);
+		}
 		break;
 	default:
 		break;
@@ -144,6 +146,42 @@ void proto_get_stats(struct proto_stats *out)
 void proto_clear_stats(void)
 {
 	memset(&stats, 0, sizeof(stats));
+}
+
+uint32_t proto_get_baud(void)
+{
+	struct uart_config cfg;
+
+	if (uart_config_get(proto_uart, &cfg) == 0) {
+		return cfg.baudrate;
+	}
+	return 0;
+}
+
+int proto_set_baud(uint32_t baud)
+{
+	struct uart_config cfg;
+	int ret;
+
+	ret = uart_config_get(proto_uart, &cfg);
+	if (ret) {
+		return ret;
+	}
+
+	rx_paused = true;
+	uart_rx_disable(proto_uart);
+
+	cfg.baudrate = baud;
+	ret = uart_configure(proto_uart, &cfg);
+	rx_paused = false;
+
+	if (ret) {
+		return ret;
+	}
+
+	dma_buf_idx = 0;
+	return uart_rx_enable(proto_uart, dma_rx_buf[0], DMA_BUF_SIZE,
+			      RX_IDLE_TIMEOUT_US);
 }
 
 void proto_init(const struct device *uart, proto_rx_cb_t cb)

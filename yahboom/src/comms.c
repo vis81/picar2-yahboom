@@ -4,6 +4,7 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
+#include <stdlib.h>
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/sys/byteorder.h>
@@ -251,8 +252,35 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_comms_stats,
 	SHELL_SUBCMD_SET_END
 );
 
+static int cmd_comms_baud(const struct shell *sh, size_t argc, char **argv)
+{
+	if (argc == 1) {
+		shell_print(sh, "%u", proto_get_baud());
+		return 0;
+	}
+
+	char *end;
+	uint32_t baud = strtoul(argv[1], &end, 10);
+	int ret;
+
+	if (*end != '\0' || baud == 0) {
+		shell_error(sh, "invalid baud rate");
+		return -EINVAL;
+	}
+
+	ret = proto_set_baud(baud);
+	if (ret) {
+		shell_error(sh, "failed (%d)", ret);
+		return ret;
+	}
+
+	shell_print(sh, "%u", baud);
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_comms,
 	SHELL_CMD(stats, &sub_comms_stats, "Print protocol statistics", cmd_comms_stats),
+	SHELL_CMD_ARG(baud, NULL, "Get/set USART1 baud rate [rate]", cmd_comms_baud, 1, 1),
 	SHELL_SUBCMD_SET_END
 );
 
