@@ -119,6 +119,7 @@
 	pwm_sw_t3: sw_pwm {
 		compatible = "st,stm32-pwm-sw";
 		status = "okay";
+		zero-latency;
 		label = "servo_pwm";
 		gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>,
 				<&gpioc 2 GPIO_ACTIVE_HIGH>,

@@ -17,6 +17,13 @@ properties:
     required: true
     description: Timer channel number (1-based) for each GPIO in the gpios array
 
+  zero-latency:
+    type: boolean
+    description: |
+      Register the timer ISR as IRQ_ZERO_LATENCY so it is not masked by
+      Zephyr's irq_lock().  Use for servo PWM where µs-level jitter is
+      visible; omit for non-timing-critical uses such as buzzers.
+
   "#pwm-cells":
     const: 3
     description: |

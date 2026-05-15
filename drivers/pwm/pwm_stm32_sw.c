@@ -458,11 +458,15 @@ static int pwm_stm32_init(const struct device *dev)
 
 #define PWM(index) DT_INST_PARENT(index)
 
+#define PWM_IRQ_FLAGS(index) \
+	COND_CODE_1(DT_INST_PROP(index, zero_latency), (IRQ_ZERO_LATENCY), (0))
+
 #define IRQ_CONNECT_AND_ENABLE_BY_NAME(index, name)				\
 {										\
 	IRQ_CONNECT(DT_IRQ_BY_NAME(PWM(index), name, irq),			\
 		    DT_IRQ_BY_NAME(PWM(index), name, priority),			\
-		    pwm_stm32_isr, DEVICE_DT_INST_GET(index), IRQ_ZERO_LATENCY);\
+		    pwm_stm32_isr, DEVICE_DT_INST_GET(index),			\
+		    PWM_IRQ_FLAGS(index));					\
 	irq_enable(DT_IRQ_BY_NAME(PWM(index), name, irq));			\
 }
 
@@ -470,7 +474,8 @@ static int pwm_stm32_init(const struct device *dev)
 {										\
 	IRQ_CONNECT(DT_IRQN(PWM(index)),					\
 		    DT_IRQ(PWM(index), priority),				\
-		    pwm_stm32_isr, DEVICE_DT_INST_GET(index), IRQ_ZERO_LATENCY);\
+		    pwm_stm32_isr, DEVICE_DT_INST_GET(index),			\
+		    PWM_IRQ_FLAGS(index));					\
 	irq_enable(DT_IRQN(PWM(index)));					\
 }
 
