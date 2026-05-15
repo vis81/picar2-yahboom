@@ -30,6 +30,7 @@
 
 #include "battery.h"
 #include "buzzer.h"
+#include "comms.h"
 #include "imu.h"
 #include "motor.h"
 #include "power.h"
@@ -43,7 +44,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 
 void system_shutdown(void)
 {
-	rc_disable();
+	rc_set_enable(0);
 	motor_stop_all();
 	servo_neutral_all();
 	buzzer_stop();
@@ -165,6 +166,7 @@ int main(void)
 	motor_init();
 	servo_init();
 	rc_init();
+	comms_init();
 
 	//buzzer_play(BUZZER_FUNKYTOWN, 50);
 

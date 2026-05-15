@@ -4,10 +4,6 @@
  * SPDX-License-Identifier: Apache-2.0
  */
 
-/**
- * @file Sample app to demonstrate PWM-based servomotor control
- */
-
 #include <zephyr/kernel.h>
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/adc_compat.h>
@@ -46,31 +42,39 @@ int battery_init() {
 	return 0;
 }
 
-int battery_read(int32_t *value)
+int battery_read(int32_t *mv, uint8_t *pct)
 {
-	int err;
 	uint16_t buf;
 	int32_t val_mv;
 	struct adc_sequence sequence = {
 		.buffer = &buf,
-		/* buffer size in bytes, not number of samples */
 		.buffer_size = sizeof(buf),
 	};
-	
+
 	adc_sequence_init_dt(&adc_ch_vbat, &sequence);
-	err = adc_read_dt(&adc_ch_vbat, &sequence);
-	if (err)
+	int err = adc_read_dt(&adc_ch_vbat, &sequence);
+
+	if (err) {
 		return err;
+	}
 	val_mv = (int32_t)buf;
 	adc_raw_to_millivolts_dt(&adc_ch_vbat, &val_mv);
-	*value = ADC2VBAT(val_mv);
+	val_mv = ADC2VBAT(val_mv);
+
+	if (mv) {
+		*mv = val_mv;
+	}
+	if (pct) {
+		*pct = (uint8_t)CLAMP((val_mv - VBAT_MIN_MV) * 100 / (VBAT_MAX_MV - VBAT_MIN_MV), 0, 100);
+	}
 	return 0;
 }
 
 static void battery_mon_func(struct k_work *work)
 {
-	int val;
-	int err = battery_read(&val);
+	int32_t val;
+	int err = battery_read(&val, NULL);
+
 	if (err) {
 		printk("read battery voltage error %d\n", err);
 		k_work_reschedule(&battery_mon_work, K_SECONDS(5));
@@ -92,8 +96,9 @@ static void battery_mon_func(struct k_work *work)
 
 static int cmd_voltage(const struct shell *sh, size_t argc, char **argv)
 {
-	int val;
-	int err = battery_read(&val);
+	int32_t val;
+	int err = battery_read(&val, NULL);
+
 	if (err) {
 		shell_error(sh, "error %d", err);
 		return err;
@@ -104,28 +109,27 @@ static int cmd_voltage(const struct shell *sh, size_t argc, char **argv)
 
 static int cmd_level(const struct shell *sh, size_t argc, char **argv)
 {
-	int val;
-	int err = battery_read(&val);
+	uint8_t pct;
+	int err = battery_read(NULL, &pct);
+
 	if (err) {
 		shell_error(sh, "error %d", err);
 		return err;
 	}
-	int pct = (val - VBAT_MIN_MV) * 100 / (VBAT_MAX_MV - VBAT_MIN_MV);
-	pct = CLAMP(pct, 0, 100);
 	shell_print(sh, "%d%%", pct);
 	return 0;
 }
 
 static int cmd_info(const struct shell *sh, size_t argc, char **argv)
 {
-	int val;
-	int err = battery_read(&val);
+	int32_t val;
+	uint8_t pct;
+	int err = battery_read(&val, &pct);
+
 	if (err) {
 		shell_error(sh, "error %d", err);
 		return err;
 	}
-	int pct = CLAMP((val - VBAT_MIN_MV) * 100 / (VBAT_MAX_MV - VBAT_MIN_MV), 0, 100);
-
 	shell_print(sh, "cells     %dS", VBAT_CELLS);
 	shell_print(sh, "max       %d mV  (%.1f V/cell)", VBAT_MAX_MV,  4200 / 1000.0);
 	shell_print(sh, "low       %d mV  (%.1f V/cell)", VBAT_LOW_MV,  3500 / 1000.0);

@@ -49,9 +49,9 @@ static int rc_debug = 0;
 static int rc_enable = 1;
 static int rc_mode = MODE_MANUAL;
 
-void rc_disable(void)
+void rc_set_enable(int en)
 {
-	rc_enable = 0;
+	rc_enable = en;
 }
 
 int rc_init() {

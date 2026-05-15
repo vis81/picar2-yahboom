@@ -33,7 +33,7 @@ static int cmd_selftest(const struct shell *sh, size_t argc, char **argv)
 	/* Battery ADC */
 	total++;
 	int32_t vbat;
-	ret = battery_read(&vbat);
+	ret = battery_read(&vbat, NULL);
 	if (ret) {
 		_result(sh, false, "battery ADC", "read error %d", ret);
 	} else if (vbat <= 0) {

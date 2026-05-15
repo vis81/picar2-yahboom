@@ -7,6 +7,6 @@
 #define _battery_h_
 
 int battery_init();
-int battery_read(int32_t *value);
+int battery_read(int32_t *mv, uint8_t *pct);
 
 #endif

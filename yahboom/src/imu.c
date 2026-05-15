@@ -68,6 +68,28 @@ int imu_sample(void)
 	return sensor_sample_fetch(imu);
 }
 
+int imu_get_data(struct imu_data *d)
+{
+	struct sensor_value a[3], g[3], m[3], t;
+	int ret = sensor_sample_fetch(imu);
+
+	if (ret) {
+		return ret;
+	}
+	sensor_channel_get(imu, SENSOR_CHAN_ACCEL_XYZ, a);
+	sensor_channel_get(imu, SENSOR_CHAN_GYRO_XYZ,  g);
+	sensor_channel_get(imu, SENSOR_CHAN_MAGN_XYZ,  m);
+	sensor_channel_get(imu, SENSOR_CHAN_DIE_TEMP,  &t);
+	apply_mag_cal(m);
+	for (int i = 0; i < 3; i++) {
+		d->accel[i] = (int16_t)(a[i].val1 * 1000 + a[i].val2 / 1000);
+		d->gyro[i]  = (int16_t)(g[i].val1 * 1000 + g[i].val2 / 1000);
+		d->magn[i]  = (int16_t)(m[i].val1 * 10   + m[i].val2 / 100000);
+	}
+	d->temp = (int16_t)(t.val1 * 100 + t.val2 / 10000);
+	return 0;
+}
+
 int imu_init(void)
 {
 	if (!device_is_ready(imu)) {
@@ -115,35 +137,28 @@ static int cmd_imu_raw(const struct shell *sh, size_t argc, char **argv)
 
 static int cmd_imu_read(const struct shell *sh, size_t argc, char **argv)
 {
-	struct sensor_value accel[3], gyro[3], magn[3], temp;
-	int ret;
+	struct imu_data d;
+	int ret = imu_get_data(&d);
 
-	ret = sensor_sample_fetch(imu);
 	if (ret) {
 		shell_error(sh, "fetch error %d", ret);
 		return ret;
 	}
 
-	sensor_channel_get(imu, SENSOR_CHAN_ACCEL_XYZ, accel);
-	sensor_channel_get(imu, SENSOR_CHAN_GYRO_XYZ,  gyro);
-	sensor_channel_get(imu, SENSOR_CHAN_DIE_TEMP,  &temp);
-	sensor_channel_get(imu, SENSOR_CHAN_MAGN_XYZ,  magn);
-	apply_mag_cal(magn);
-
-	shell_print(sh, "accel  x: %d.%06d  y: %d.%06d  z: %d.%06d m/s²",
-		accel[0].val1, abs(accel[0].val2),
-		accel[1].val1, abs(accel[1].val2),
-		accel[2].val1, abs(accel[2].val2));
-	shell_print(sh, "gyro   x: %d.%06d  y: %d.%06d  z: %d.%06d rad/s",
-		gyro[0].val1, abs(gyro[0].val2),
-		gyro[1].val1, abs(gyro[1].val2),
-		gyro[2].val1, abs(gyro[2].val2));
-	shell_print(sh, "magn   x: %d.%06d  y: %d.%06d  z: %d.%06d uT",
-		magn[0].val1, abs(magn[0].val2),
-		magn[1].val1, abs(magn[1].val2),
-		magn[2].val1, abs(magn[2].val2));
+	shell_print(sh, "accel  x: %d.%03d  y: %d.%03d  z: %d.%03d m/s²",
+		d.accel[0] / 1000, abs(d.accel[0] % 1000),
+		d.accel[1] / 1000, abs(d.accel[1] % 1000),
+		d.accel[2] / 1000, abs(d.accel[2] % 1000));
+	shell_print(sh, "gyro   x: %d.%03d  y: %d.%03d  z: %d.%03d rad/s",
+		d.gyro[0] / 1000, abs(d.gyro[0] % 1000),
+		d.gyro[1] / 1000, abs(d.gyro[1] % 1000),
+		d.gyro[2] / 1000, abs(d.gyro[2] % 1000));
+	shell_print(sh, "magn   x: %d.%01d  y: %d.%01d  z: %d.%01d uT",
+		d.magn[0] / 10, abs(d.magn[0] % 10),
+		d.magn[1] / 10, abs(d.magn[1] % 10),
+		d.magn[2] / 10, abs(d.magn[2] % 10));
 	shell_print(sh, "temp   %d.%02d °C",
-		temp.val1, abs(temp.val2) / 10000);
+		d.temp / 100, abs(d.temp % 100));
 
 	return 0;
 }

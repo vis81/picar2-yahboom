@@ -1,0 +1,192 @@
+/*
+ * Copyright (c) 2024
+ *
+ * SPDX-License-Identifier: Apache-2.0
+ */
+
+#include <zephyr/kernel.h>
+#include <zephyr/drivers/uart.h>
+#include <zephyr/sys/byteorder.h>
+#include "protocol.h"
+#include "comms.h"
+#include "motor.h"
+#include "servo.h"
+#include "imu.h"
+#include "battery.h"
+#include "rc.h"
+
+/* STM32 → Pi stream IDs and message types */
+#define STREAM_JOINT  0x01
+#define STREAM_IMU    0x02
+#define STREAM_BAT    0x03
+#define STREAM_MAX    4    /* valid IDs: 1..3; index 0 unused */
+
+/* Pi → STM32 message types */
+#define MSG_CMD_VEL   0x80
+#define MSG_REQ       0x81
+#define MSG_SET_RATE  0x82
+
+static const struct device *pi_uart;
+static bool connected;
+static uint8_t js_seq;
+
+static struct k_timer stream_tmr[STREAM_MAX];
+static struct k_work  stream_wrk[STREAM_MAX];
+
+static void on_timeout(struct k_work *w);
+static K_WORK_DELAYABLE_DEFINE(watchdog_work, on_timeout);
+
+static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
+{
+	uint8_t frame[3 + PROTO_MAX_LEN + 1];
+	int n = proto_encode(type, payload, len, frame);
+
+	for (int i = 0; i < n; i++) {
+		uart_poll_out(pi_uart, frame[i]);
+	}
+}
+
+static void send_joint_state(void)
+{
+	int32_t el = 0, er = 0;
+	uint8_t steer = 0;
+	uint8_t payload[10];
+
+	motor_pos(MOTOR_L, &el);
+	motor_pos(MOTOR_R, &er);
+	servo_get(&steer);
+
+	sys_put_le32((uint32_t)el, &payload[0]);
+	sys_put_le32((uint32_t)er, &payload[4]);
+	payload[8] = steer;
+	payload[9] = js_seq++;
+
+	send_frame(STREAM_JOINT, payload, sizeof(payload));
+}
+
+static void send_imu(void)
+{
+	struct imu_data d;
+	uint8_t payload[20];
+	if (imu_get_data(&d) != 0) {
+		return;
+	}
+	for (int i = 0; i < 3; i++) {
+		sys_put_le16((uint16_t)d.accel[i], &payload[i * 2]);
+		sys_put_le16((uint16_t)d.gyro[i],  &payload[6 + i * 2]);
+		sys_put_le16((uint16_t)d.magn[i],  &payload[12 + i * 2]);
+	}
+	sys_put_le16((uint16_t)d.temp, &payload[18]);
+
+	send_frame(STREAM_IMU, payload, sizeof(payload));
+}
+
+static void send_battery(void)
+{
+	int32_t mv = 0;
+	uint8_t pct = 0;
+	uint8_t payload[4];
+
+	if (battery_read(&mv, &pct) != 0) {
+		return;
+	}
+
+	sys_put_le16((uint16_t)mv, &payload[0]);
+	payload[2] = pct;
+	payload[3] = 0;
+
+	send_frame(STREAM_BAT, payload, sizeof(payload));
+}
+
+static void send_stream(uint8_t id)
+{
+	switch (id) {
+	case STREAM_JOINT: send_joint_state(); break;
+	case STREAM_IMU:   send_imu();         break;
+	case STREAM_BAT:   send_battery();     break;
+	}
+}
+
+static void stream_work_fn(struct k_work *w)
+{
+	int id = (int)(w - stream_wrk);
+
+	send_stream((uint8_t)id);
+}
+
+static void timer_expiry_fn(struct k_timer *t)
+{
+	int id = (int)(uintptr_t)k_timer_user_data_get(t);
+
+	k_work_submit(&stream_wrk[id]);
+}
+
+static void on_timeout(struct k_work *w)
+{
+	connected = false;
+	rc_set_enable(1);
+}
+
+static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
+{
+	k_work_reschedule(&watchdog_work, K_MSEC(500));
+	if (!connected) {
+		connected = true;
+		rc_set_enable(0);
+	}
+
+	switch (type) {
+	case MSG_CMD_VEL:
+		if (len < 5) {
+			break;
+		}
+		motor_speed(MOTOR_L, (int32_t)(int16_t)sys_get_le16(&payload[0]));
+		motor_speed(MOTOR_R, (int32_t)(int16_t)sys_get_le16(&payload[2]));
+		servo_steer(payload[4]);
+		break;
+
+	case MSG_REQ:
+		if (len < 1) {
+			break;
+		}
+		send_stream(payload[0]);
+		break;
+
+	case MSG_SET_RATE: {
+		if (len < 3) {
+			break;
+		}
+		uint8_t id = payload[0];
+		uint16_t hz = sys_get_le16(&payload[1]);
+
+		if (id < 1 || id >= STREAM_MAX) {
+			break;
+		}
+		if (hz == 0) {
+			k_timer_stop(&stream_tmr[id]);
+		} else {
+			uint32_t period_ms = 1000u / hz;
+
+			if (period_ms == 0) {
+				period_ms = 1;
+			}
+			k_timer_start(&stream_tmr[id],
+				      K_MSEC(period_ms), K_MSEC(period_ms));
+		}
+		break;
+	}
+	}
+}
+
+void comms_init(void)
+{
+	pi_uart = DEVICE_DT_GET(DT_NODELABEL(usart1));
+
+	for (int i = 1; i < STREAM_MAX; i++) {
+		k_work_init(&stream_wrk[i], stream_work_fn);
+		k_timer_init(&stream_tmr[i], timer_expiry_fn, NULL);
+		k_timer_user_data_set(&stream_tmr[i], (void *)(uintptr_t)i);
+	}
+
+	proto_init(pi_uart, comms_rx);
+}
