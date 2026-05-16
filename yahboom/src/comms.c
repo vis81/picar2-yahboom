@@ -479,9 +479,18 @@ static int cmd_ts_status(const struct shell *sh, size_t argc, char **argv)
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
 	if (ts_offset_valid) {
-		shell_print(sh, "ts: count=%u  valid=yes  offset=%lld us  age=%lld ms",
+		int64_t mn = ts_offsets[0], mx = ts_offsets[0];
+
+		for (int i = 1; i < 8; i++) {
+			if (ts_offsets[i] < mn) mn = ts_offsets[i];
+			if (ts_offsets[i] > mx) mx = ts_offsets[i];
+		}
+		shell_print(sh,
+			"ts: count=%u  valid=yes  offset=%lld us"
+			"  jitter=%lld us  age=%lld ms",
 			ts_count,
 			(long long)ts_offset_us,
+			(long long)(mx - mn),
 			(long long)(k_uptime_get() - ts_last_rx_ms));
 	} else {
 		shell_print(sh, "ts: count=%u  valid=no  offset=\xe2\x80\x94", ts_count);
