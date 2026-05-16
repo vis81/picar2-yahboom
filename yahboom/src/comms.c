@@ -59,18 +59,22 @@ static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
 
 static void send_joint_state(void)
 {
-	int32_t el = 0, er = 0;
+	int32_t el = 0, er = 0, vl = 0, vr = 0;
 	uint8_t steer = 0;
-	uint8_t payload[10];
+	uint8_t payload[14];
 
 	motor_pos(MOTOR_L, &el);
 	motor_pos(MOTOR_R, &er);
+	motor_vel(MOTOR_L, &vl);
+	motor_vel(MOTOR_R, &vr);
 	servo_get(&steer);
 
 	sys_put_le32((uint32_t)el, &payload[0]);
 	sys_put_le32((uint32_t)er, &payload[4]);
 	payload[8] = steer;
 	payload[9] = js_seq++;
+	sys_put_le16((uint16_t)(int16_t)vl, &payload[10]);
+	sys_put_le16((uint16_t)(int16_t)vr, &payload[12]);
 
 	send_frame(STREAM_JOINT, payload, sizeof(payload));
 }

@@ -64,6 +64,12 @@ int motor_pos(enum motor_id id, int32_t *pos) {
 	return motor_get_position(motors[id], pos);
 }
 
+int motor_vel(enum motor_id id, int32_t *vel) {
+	if (id > MOTOR_LAST)
+		return -EINVAL;
+	return motor_get_velocity(motors[id], vel);
+}
+
 
 #ifdef CONFIG_SHELL
 static int cmd_motor_throttle(const struct shell *sh, size_t argc, char **argv)
