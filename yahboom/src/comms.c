@@ -159,6 +159,46 @@ static void on_timeout(struct k_work *w)
 	rc_set_enable(1);
 }
 
+#ifdef CONFIG_SHELL
+static const struct shell *mon_shell;
+
+static void comms_mon_print(uint8_t type, const uint8_t *payload, uint8_t len)
+{
+	const struct shell *sh = mon_shell;
+
+	if (!sh) {
+		return;
+	}
+	switch (type) {
+	case MSG_CMD_VEL:
+		if (len >= 5) {
+			shell_print(sh, "CMD_VEL  l=%-6d r=%-6d steer=%u",
+				(int)(int16_t)sys_get_le16(&payload[0]),
+				(int)(int16_t)sys_get_le16(&payload[2]),
+				payload[4]);
+		}
+		break;
+	case MSG_REQ:
+		if (len >= 1) {
+			shell_print(sh, "REQ      stream=0x%02x", payload[0]);
+		}
+		break;
+	case MSG_SET_RATE:
+		if (len >= 3) {
+			shell_print(sh, "SET_RATE stream=0x%02x hz=%u",
+				payload[0], sys_get_le16(&payload[1]));
+		}
+		break;
+	case MSG_GET_STATS:
+		shell_print(sh, "GET_STATS reset=%u", len >= 1 ? payload[0] : 0u);
+		break;
+	default:
+		shell_print(sh, "UNKNOWN  type=0x%02x len=%u", type, len);
+		break;
+	}
+}
+#endif /* CONFIG_SHELL */
+
 static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 {
 	k_work_reschedule(&watchdog_work, K_MSEC(500));
@@ -166,6 +206,10 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		connected = true;
 		rc_set_enable(0);
 	}
+
+#ifdef CONFIG_SHELL
+	comms_mon_print(type, payload, len);
+#endif
 
 	switch (type) {
 	case MSG_CMD_VEL:
@@ -305,9 +349,22 @@ static int cmd_comms_baud(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_comms_mon(const struct shell *sh, size_t argc, char **argv)
+{
+	if (mon_shell) {
+		mon_shell = NULL;
+		shell_print(sh, "monitor off");
+	} else {
+		mon_shell = sh;
+		shell_print(sh, "monitor on");
+	}
+	return 0;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_comms,
 	SHELL_CMD(stats, &sub_comms_stats, "Print protocol statistics", cmd_comms_stats),
 	SHELL_CMD_ARG(baud, NULL, "Get/set USART1 baud rate [rate]", cmd_comms_baud, 1, 1),
+	SHELL_CMD(mon, NULL, "Toggle Pi→STM32 frame monitor", cmd_comms_mon),
 	SHELL_SUBCMD_SET_END
 );
 

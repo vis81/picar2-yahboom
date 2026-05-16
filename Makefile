@@ -25,8 +25,8 @@ help:
 	@echo "  make test-pwm-servo             — build and run PWM servo unit tests (native_sim)"
 	@echo "  make test-sbus                  — build and run SBUS receiver unit tests (native_sim)"
 	@echo "  make test-stm32-sw              — build STM32 SW-PWM unit tests (build only)"
-	@echo "  make tests                      — run all: test-pwm-servo + test-sbus + test-stm32-sw
-  make test-shell-echo            — shell UART echo integrity test (hardware, /dev/ttyYahboom1)"
+	@echo "  make tests                      — run all: test-pwm-servo + test-sbus + test-stm32-sw"
+	@echo "  make test-shell-echo            — shell UART echo integrity test (hardware, /dev/ttyYahboom1)"
 	@echo "  make mcuboot                    — build MCUboot bootloader"
 	@echo "  make app-signed                 — build application with MCUboot signing"
 	@echo ""
