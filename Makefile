@@ -8,10 +8,15 @@ APP_DIR     = yahboom
 MCUMGR      = ~/go/bin/mcumgr
 
 .PHONY: help all $(APP_DIR) tests test-pwm-servo test-stm32-sw test-sbus test-shell-echo \
+        test-timesync build-timesync \
         clean distclean \
         mcuboot app-signed \
         flash flash-app-signed flash-mcuboot flash-app-signed-mcumgr \
         check-env
+
+TIMESYNC_SRC = tests/integration/timesync_test.cpp
+TIMESYNC_BIN = tests/integration/timesync_test
+TIMESYNC_PORT ?= /dev/ttyYahboom0
 
 # ── help ─────────────────────────────────────────────────────────────────────
 
@@ -27,6 +32,8 @@ help:
 	@echo "  make test-stm32-sw              — build STM32 SW-PWM unit tests (build only)"
 	@echo "  make tests                      — run all: test-pwm-servo + test-sbus + test-stm32-sw"
 	@echo "  make test-shell-echo            — shell UART echo integrity test (hardware, /dev/ttyYahboom1)"
+	@echo "  make test-timesync              — C++ timesync accuracy benchmark (hardware, TIMESYNC_PORT=/dev/ttyYahboom0)"
+	@echo "  make build-timesync             — build the timesync benchmark binary only"
 	@echo "  make mcuboot                    — build MCUboot bootloader"
 	@echo "  make app-signed                 — build application with MCUboot signing"
 	@echo ""
@@ -81,8 +88,15 @@ tests: test-pwm-servo test-sbus test-stm32-sw
 test-shell-echo:
 	python3 tests/integration/test_shell_echo.py
 
+build-timesync:
+	g++ -O2 -std=c++17 -Wall -Wno-unused-result -o $(TIMESYNC_BIN) $(TIMESYNC_SRC)
+
+test-timesync: build-timesync
+	$(TIMESYNC_BIN) $(TIMESYNC_PORT)
+
 clean:
 	rm -rf build
+	rm -f $(TIMESYNC_BIN)
 
 distclean:
 	rm -rf build zephyr_os .west .venv
