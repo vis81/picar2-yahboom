@@ -37,10 +37,12 @@ TYPE_JOINT = 0x01
 TYPE_IMU   = 0x02
 TYPE_BAT   = 0x03
 
-MSG_CMD_VEL  = 0x80
-MSG_REQ      = 0x81
-MSG_SET_RATE = 0x82
-MSG_GET_STATS = 0x83
+MSG_CMD_VEL       = 0x80
+MSG_REQ           = 0x81
+MSG_SET_RATE      = 0x82
+MSG_GET_STATS     = 0x83
+MSG_TIMESYNC      = 0x84
+MSG_TIMESYNC_RESP = 0x05
 
 TYPE_STATS = 0x04
 
@@ -79,6 +81,9 @@ def enc_set_rate(stream_id: int, hz: int) -> bytes:
 
 def enc_get_stats(clear: bool = False) -> bytes:
     return _frame(MSG_GET_STATS, bytes([1]) if clear else b"")
+
+def enc_timesync(t1_us: int, t4_prev_us: int = 0) -> bytes:
+    return _frame(MSG_TIMESYNC, struct.pack("<qq", t1_us, t4_prev_us))
 
 
 # ── Frame decoding ────────────────────────────────────────────────────────────
@@ -119,8 +124,13 @@ def decode_stats(payload: bytes) -> dict:
         "tx_frames":  fields[5],
     }
 
+def decode_timesync_resp(payload: bytes) -> dict:
+    t2_us, = struct.unpack("<q", payload[:8])
+    return {"t2_us": t2_us}
+
 DECODERS = {TYPE_JOINT: decode_joint, TYPE_IMU: decode_imu,
-            TYPE_BAT: decode_bat, TYPE_STATS: decode_stats}
+            TYPE_BAT: decode_bat, TYPE_STATS: decode_stats,
+            MSG_TIMESYNC_RESP: decode_timesync_resp}
 
 
 # ── Receiver thread ───────────────────────────────────────────────────────────
@@ -212,6 +222,24 @@ class App(tk.Tk):
         self._rx_stream   = {t: 0 for t in STREAM_NAMES}
         self._last_fw_stats_req = 0.0
 
+        # Timesync state
+        self._sync_t1_us      = 0
+        self._sync_last_t4_us = 0
+        self._sync_count      = 0
+        self._sync_offsets    = [0] * 8
+        self._sync_hist_idx   = 0
+        self._sync_valid      = False
+        self._sync_offset_us  = 0
+        self._sync_jitter_us  = 0
+        self._sync_last_rx_ms = 0.0
+        self._sync_poll_cycle = 0
+        self._sync_last_raw    = None   # previous raw offset, for diff tracking
+        self._sync_diffs       : list[int] = []
+        self._sync_last_diff_us = 0
+        self._sync_avg_diff_us  = 0
+        self._sync_max_diff_us  = 0
+        self._sync_period_var   = tk.StringVar(value="1")
+
         self._build_ui(default_port, default_baud)
         self.protocol("WM_DELETE_WINDOW", self._on_close)
         self._poll()
@@ -278,6 +306,35 @@ class App(tk.Tk):
         _fw(fw1, "short:",      6); self._fw_rx_short   = _fw(fw1, "—",  7, width=6)
         _fw(fw1, "unknown:",    8); self._fw_rx_unknown = _fw(fw1, "—",  9, width=6)
         _fw(fw1, "tx frames:", 10); self._fw_tx_frames  = _fw(fw1, "—", 11, width=8)
+
+        ttk.Separator(sf, orient="horizontal").pack(fill="x", padx=6, pady=(4, 0))
+
+        ts = ttk.LabelFrame(sf, text="Timesync")
+        ts.pack(fill="x", padx=6, pady=(4, 4))
+        ts1 = ttk.Frame(ts)
+        ts1.pack(fill="x")
+
+        def _ts(parent, text, col, row=0, width=None):
+            kw = {"width": width} if width else {}
+            l = ttk.Label(parent, text=text, **kw)
+            l.grid(row=row, column=col, sticky="w", padx=(6, 2), pady=2)
+            return l
+
+        _ts(ts1, "count:",   0); self._ts_count  = _ts(ts1, "0",  1, width=6)
+        _ts(ts1, "valid:",   2)
+        self._ts_valid = tk.Label(ts1, text="no", fg="gray", width=4, anchor="w")
+        self._ts_valid.grid(row=0, column=3, sticky="w", padx=(0, 6), pady=2)
+        _ts(ts1, "jitter µs:", 4); self._ts_jitter = _ts(ts1, "—", 5, width=8)
+        _ts(ts1, "age ms:",    6); self._ts_age    = _ts(ts1, "—", 7, width=8)
+        _ts(ts1, "period:",    8)
+        ttk.Combobox(ts1, textvariable=self._sync_period_var, width=4,
+                     values=["0.5", "1", "2", "5", "10"]).grid(
+            row=0, column=9, padx=2, pady=2)
+        _ts(ts1, "s", 10)
+
+        _ts(ts1, "Δ last µs:", 0, row=1); self._ts_last_diff = _ts(ts1, "—", 1, row=1, width=8)
+        _ts(ts1, "Δ avg µs:",  2, row=1); self._ts_avg_diff  = _ts(ts1, "—", 3, row=1, width=8)
+        _ts(ts1, "Δ max µs:",  4, row=1); self._ts_max_diff  = _ts(ts1, "—", 5, row=1, width=8)
 
 
     def _clear_stats(self):
@@ -429,6 +486,16 @@ class App(tk.Tk):
             dq.clear()
         self._tx_cmd_vel = self._tx_req = self._tx_set_rate = 0
         self._rx_stream  = {t: 0 for t in STREAM_NAMES}
+        self._sync_t1_us = self._sync_last_t4_us = 0
+        self._sync_count = self._sync_hist_idx = 0
+        self._sync_offsets = [0] * 8
+        self._sync_valid = False
+        self._sync_offset_us = self._sync_jitter_us = 0
+        self._sync_last_rx_ms = 0.0
+        self._sync_poll_cycle = 0
+        self._sync_last_raw = None
+        self._sync_diffs = []
+        self._sync_last_diff_us = self._sync_avg_diff_us = self._sync_max_diff_us = 0
         self._conn_btn.config(text="Disconnect")
         self._status_lbl.config(text="● CONNECTED", fg="green")
 
@@ -510,6 +577,61 @@ class App(tk.Tk):
     def _request_fw_stats(self):
         self._write(enc_get_stats())
 
+    def _send_timesync(self):
+        t1 = int(time.time() * 1e6)
+        self._sync_t1_us = t1
+        self._write(enc_timesync(t1, self._sync_last_t4_us))
+
+    def _on_timesync_resp(self, d: dict):
+        t4 = int(time.time() * 1e6)
+        t2 = d["t2_us"]
+        t1 = self._sync_t1_us
+        self._sync_last_t4_us = t4
+        self._sync_count += 1
+        self._sync_last_rx_ms = time.monotonic() * 1000
+
+        if t1 != 0:
+            raw = (t1 + t4) // 2 - t2
+            if not self._sync_valid:
+                self._sync_offsets = [raw] * 8
+                self._sync_hist_idx = 1
+            else:
+                self._sync_offsets[self._sync_hist_idx % 8] = raw
+                self._sync_hist_idx += 1
+            self._sync_offset_us = sorted(self._sync_offsets)[4]
+            self._sync_jitter_us = max(self._sync_offsets) - min(self._sync_offsets)
+            self._sync_valid = True
+
+            if self._sync_last_raw is not None:
+                diff = abs(raw - self._sync_last_raw)
+                self._sync_last_diff_us = diff
+                self._sync_diffs.append(diff)
+                if len(self._sync_diffs) > 8:
+                    self._sync_diffs.pop(0)
+                self._sync_avg_diff_us = sum(self._sync_diffs) // len(self._sync_diffs)
+                self._sync_max_diff_us = max(self._sync_diffs)
+            self._sync_last_raw = raw
+
+    def _refresh_sync(self):
+        self._ts_count.config(text=str(self._sync_count))
+        if self._sync_valid:
+            age_ms = int(time.monotonic() * 1000 - self._sync_last_rx_ms)
+            self._ts_valid.config(text="yes", fg="green")
+            self._ts_jitter.config(text=str(self._sync_jitter_us))
+            self._ts_age.config(text=str(age_ms))
+        else:
+            self._ts_valid.config(text="no", fg="gray")
+            self._ts_jitter.config(text="—")
+            self._ts_age.config(text="—")
+        if self._sync_diffs:
+            self._ts_last_diff.config(text=str(self._sync_last_diff_us))
+            self._ts_avg_diff.config(text=str(self._sync_avg_diff_us))
+            self._ts_max_diff.config(text=str(self._sync_max_diff_us))
+        else:
+            self._ts_last_diff.config(text="—")
+            self._ts_avg_diff.config(text="—")
+            self._ts_max_diff.config(text="—")
+
     # ── Poll / display update (GUI thread, every 100 ms) ─────────────────────
 
     def _poll(self):
@@ -524,13 +646,25 @@ class App(tk.Tk):
                             self._refresh_stream(msg_type, decoded)
                     elif msg_type == TYPE_STATS and decoded is not None:
                         self._refresh_fw_stats(decoded)
+                    elif msg_type == MSG_TIMESYNC_RESP and decoded is not None:
+                        self._on_timesync_resp(decoded)
             except queue.Empty:
                 pass
             self._refresh_stats()
+            self._refresh_sync()
             now = time.monotonic()
             if now - self._last_fw_stats_req >= 1.0:
                 self._request_fw_stats()
                 self._last_fw_stats_req = now
+            try:
+                period_s = float(self._sync_period_var.get())
+            except ValueError:
+                period_s = 1.0
+            if period_s > 0:
+                interval = max(1, round(period_s / 0.1))
+                if self._sync_poll_cycle < 8 or self._sync_poll_cycle % interval == 0:
+                    self._send_timesync()
+            self._sync_poll_cycle += 1
         self.after(100, self._poll)
 
     def _refresh_fw_stats(self, d: dict):
