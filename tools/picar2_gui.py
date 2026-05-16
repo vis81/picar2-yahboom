@@ -192,6 +192,8 @@ class Receiver(threading.Thread):
                         decoded = DECODERS[self._type](bytes(self._buf))
                     except Exception:
                         self.rx_decode_err += 1
+                if self._type == MSG_TIMESYNC_RESP and decoded is not None:
+                    decoded['rx_time_us'] = int(time.time() * 1e6)
                 self.q.put((self._type, bytes(self._buf), decoded))
             else:
                 self.rx_crc_err += 1
@@ -583,7 +585,7 @@ class App(tk.Tk):
         self._write(enc_timesync(t1, self._sync_last_t4_us))
 
     def _on_timesync_resp(self, d: dict):
-        t4 = int(time.time() * 1e6)
+        t4 = d["rx_time_us"]   # recorded in receiver thread at frame-complete time
         t2 = d["t2_us"]
         t1 = self._sync_t1_us
         self._sync_last_t4_us = t4
