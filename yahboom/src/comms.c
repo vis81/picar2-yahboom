@@ -65,6 +65,11 @@ static int64_t  ts_t2_prev;
 static int64_t  ts_last_rx_ms;
 static int64_t  ts_offsets[8];
 static int      ts_hist_idx;
+static bool     ts_last_raw_valid;
+static int64_t  ts_last_raw;
+static int64_t  ts_diffs[8];
+static int      ts_diff_idx;
+static int      ts_diff_count;
 
 static void on_timeout(struct k_work *w);
 static K_WORK_DELAYABLE_DEFINE(watchdog_work, on_timeout);
@@ -363,6 +368,16 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 			}
 			ts_offset_us    = ts_median();
 			ts_offset_valid = true;
+
+			if (ts_last_raw_valid) {
+				int64_t diff = raw - ts_last_raw;
+
+				if (diff < 0) diff = -diff;
+				ts_diffs[ts_diff_idx++ % 8] = diff;
+				if (ts_diff_count < 8) ts_diff_count++;
+			}
+			ts_last_raw       = raw;
+			ts_last_raw_valid = true;
 		}
 		ts_t1_prev = t1;
 		ts_t2_prev = t2;
@@ -485,12 +500,19 @@ static int cmd_ts_status(const struct shell *sh, size_t argc, char **argv)
 			if (ts_offsets[i] < mn) mn = ts_offsets[i];
 			if (ts_offsets[i] > mx) mx = ts_offsets[i];
 		}
+		int64_t avg_diff = 0;
+
+		if (ts_diff_count > 0) {
+			for (int i = 0; i < ts_diff_count; i++) avg_diff += ts_diffs[i];
+			avg_diff /= ts_diff_count;
+		}
 		shell_print(sh,
 			"ts: count=%u  valid=yes  offset=%lld us"
-			"  jitter=%lld us  age=%lld ms",
+			"  jitter=%lld us  avg_diff=%lld us  age=%lld ms",
 			ts_count,
 			(long long)ts_offset_us,
 			(long long)(mx - mn),
+			(long long)avg_diff,
 			(long long)(k_uptime_get() - ts_last_rx_ms));
 	} else {
 		shell_print(sh, "ts: count=%u  valid=no  offset=\xe2\x80\x94", ts_count);
@@ -502,15 +524,20 @@ static int cmd_ts_clear(const struct shell *sh, size_t argc, char **argv)
 {
 	ARG_UNUSED(argc);
 	ARG_UNUSED(argv);
-	ts_count        = 0;
-	ts_offset_valid = false;
-	ts_offset_us    = 0;
-	ts_t1_prev      = 0;
-	ts_t2_prev      = 0;
-	ts_last_rx_ms   = 0;
-	ts_hist_idx     = 0;
+	ts_count          = 0;
+	ts_offset_valid   = false;
+	ts_offset_us      = 0;
+	ts_t1_prev        = 0;
+	ts_t2_prev        = 0;
+	ts_last_rx_ms     = 0;
+	ts_hist_idx       = 0;
+	ts_last_raw_valid = false;
+	ts_last_raw       = 0;
+	ts_diff_idx       = 0;
+	ts_diff_count     = 0;
 	for (int i = 0; i < 8; i++) {
 		ts_offsets[i] = 0LL;
+		ts_diffs[i]   = 0LL;
 	}
 	shell_print(sh, "cleared");
 	return 0;
