@@ -85,7 +85,12 @@ def enc_get_stats(clear: bool = False) -> bytes:
 
 def decode_joint(payload: bytes) -> dict:
     enc_l, enc_r, steer, seq = struct.unpack("<iiBB", payload[:10])
-    return {"enc_left": enc_l, "enc_right": enc_r, "steering": steer, "seq": seq}
+    d = {"enc_left": enc_l, "enc_right": enc_r, "steering": steer, "seq": seq}
+    if len(payload) >= 14:
+        vel_l, vel_r = struct.unpack_from("<hh", payload, 10)
+        d["vel_left"] = vel_l
+        d["vel_right"] = vel_r
+    return d
 
 def decode_imu(payload: bytes) -> dict:
     v = struct.unpack("<10h", payload[:20])
@@ -561,6 +566,11 @@ class App(tk.Tk):
                 f"enc_l={data['enc_left']:+10d}   enc_r={data['enc_right']:+10d}\n"
                 f"steer={data['steering']:3d}   seq={data['seq']}"
             )
+            if "vel_left" in data:
+                txt += (
+                    f"\nvel_l={data['vel_left']:+6d} °/s"
+                    f"   vel_r={data['vel_right']:+6d} °/s"
+                )
         elif sid == TYPE_IMU:
             a, g, m = data["accel"], data["gyro"], data["magn"]
             txt = (
