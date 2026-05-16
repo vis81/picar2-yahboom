@@ -21,6 +21,9 @@ description: >
   drivers/                     ← custom Zephyr drivers
   build/                       ← build output (gitignored)
   zephyr_os/                   ← fetched by west (gitignored)
+    zephyr/                    ← Zephyr OS itself
+    modules/hal/               ← HAL for the target platform
+    sdk/                       ← Zephyr SDK (toolchain)
   sdk-version.txt              ← pinned Zephyr SDK version
   west.yml                     ← pinned Zephyr version (v3.7.0 on v3.7 branch)
 ```
@@ -86,7 +89,7 @@ The board exposes two independent serial ports via USB-serial adapters:
 
 | Port | MCU UART | Baud | Purpose |
 |---|---|---|---|
-| `/dev/ttyYahboom0` | USART1 | 115200 (bootloader) / 921600 (app) | ROM bootloader for flashing; custom protocol when app is running |
+| `/dev/ttyYahboom0` | USART1 | 921600 (ROM bootloader flash) / 460800 (app) | stm32flash entry; custom Pi↔STM32 binary protocol when app is running |
 | `/dev/ttyYahboom1` | USART3 | 921600 | Zephyr shell console |
 
 They are independent — you can keep the shell console open while flashing.
@@ -135,7 +138,7 @@ make flash
 ### Flashing
 
 ```sh
-make flash    # runs: west flash --runner stm32flash --device /dev/ttyYahboom0 --baud-rate 115200
+make flash    # runs: west flash --runner stm32flash --device /dev/ttyYahboom0 --baud-rate 921600
 ```
 
 ### Common flash failures
