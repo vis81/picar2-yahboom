@@ -25,10 +25,25 @@
 #define STREAM_MAX    4    /* valid IDs: 1..3; index 0 unused; STATS is one-shot */
 
 /* Pi → STM32 message types */
-#define MSG_CMD_VEL   0x80
-#define MSG_REQ       0x81
-#define MSG_SET_RATE  0x82
-#define MSG_GET_STATS 0x83
+#define MSG_CMD_VEL       0x80
+#define MSG_REQ           0x81
+#define MSG_SET_RATE      0x82
+#define MSG_GET_STATS     0x83
+#define MSG_TIMESYNC      0x84
+
+/* STM32 → Pi timesync response */
+#define MSG_TIMESYNC_RESP 0x05
+
+static inline int64_t decode_le64(const uint8_t *p)
+{
+	return (int64_t)((uint64_t)sys_get_le32(p) |
+			 ((uint64_t)sys_get_le32(p + 4) << 32));
+}
+
+static int64_t get_uptime_us(void)
+{
+	return (int64_t)(k_cycle_get_64() / 72u);
+}
 
 static const struct device *pi_uart;
 static bool connected;
@@ -40,6 +55,16 @@ static struct k_work  stream_wrk[STREAM_MAX];
 static uint32_t tx_frames[STREAM_MAX];
 static uint32_t rx_unknown;
 static uint32_t rx_short;
+
+/* Timesync state */
+static uint32_t ts_count;
+static bool     ts_offset_valid;
+static int64_t  ts_offset_us;
+static int64_t  ts_t1_prev;
+static int64_t  ts_t2_prev;
+static int64_t  ts_last_rx_ms;
+static int64_t  ts_offsets[8];
+static int      ts_hist_idx;
 
 static void on_timeout(struct k_work *w);
 static K_WORK_DELAYABLE_DEFINE(watchdog_work, on_timeout);
@@ -57,11 +82,40 @@ static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
 	}
 }
 
+static int64_t ts_median(void)
+{
+	int64_t tmp[8];
+
+	for (int i = 0; i < 8; i++) {
+		tmp[i] = ts_offsets[i];
+	}
+	for (int i = 1; i < 8; i++) {
+		int64_t key = tmp[i];
+		int j = i - 1;
+
+		while (j >= 0 && tmp[j] > key) {
+			tmp[j + 1] = tmp[j];
+			j--;
+		}
+		tmp[j + 1] = key;
+	}
+	return tmp[4];
+}
+
+static void send_timesync_resp(int64_t t2)
+{
+	uint8_t payload[8];
+
+	sys_put_le32((uint32_t)((uint64_t)t2 & 0xFFFFFFFFu), &payload[0]);
+	sys_put_le32((uint32_t)((uint64_t)t2 >> 32),         &payload[4]);
+	send_frame(MSG_TIMESYNC_RESP, payload, 8);
+}
+
 static void send_joint_state(void)
 {
 	int32_t el = 0, er = 0, vl = 0, vr = 0;
 	uint8_t steer = 0;
-	uint8_t payload[14];
+	uint8_t payload[22];
 
 	motor_pos(MOTOR_L, &el);
 	motor_pos(MOTOR_R, &er);
@@ -75,6 +129,11 @@ static void send_joint_state(void)
 	payload[9] = js_seq++;
 	sys_put_le16((uint16_t)(int16_t)vl, &payload[10]);
 	sys_put_le16((uint16_t)(int16_t)vr, &payload[12]);
+
+	int64_t pi_time = ts_offset_valid ? get_uptime_us() + ts_offset_us : 0LL;
+
+	sys_put_le32((uint32_t)((uint64_t)pi_time & 0xFFFFFFFFu), &payload[14]);
+	sys_put_le32((uint32_t)((uint64_t)pi_time >> 32),         &payload[18]);
 
 	send_frame(STREAM_JOINT, payload, sizeof(payload));
 }
@@ -196,6 +255,13 @@ static void comms_mon_print(uint8_t type, const uint8_t *payload, uint8_t len)
 	case MSG_GET_STATS:
 		shell_print(sh, "GET_STATS reset=%u", len >= 1 ? payload[0] : 0u);
 		break;
+	case MSG_TIMESYNC:
+		if (len >= 16) {
+			shell_print(sh, "TIMESYNC  t1=%lld t4_prev=%lld",
+				(long long)decode_le64(&payload[0]),
+				(long long)decode_le64(&payload[8]));
+		}
+		break;
 	default:
 		shell_print(sh, "UNKNOWN  type=0x%02x len=%u", type, len);
 		break;
@@ -269,6 +335,40 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		}
 		send_stats();
 		break;
+
+	case MSG_TIMESYNC: {
+		if (len < 16) {
+			rx_short++;
+			break;
+		}
+		int64_t t2      = get_uptime_us();
+		int64_t t1      = decode_le64(&payload[0]);
+		int64_t t4_prev = decode_le64(&payload[8]);
+
+		ts_last_rx_ms = k_uptime_get();
+		ts_count++;
+
+		if (t4_prev != 0 && ts_t1_prev != 0) {
+			/* offset = Pi_midtime - STM32_receive, so pi_time = stm32_us + offset */
+			int64_t raw = (ts_t1_prev + t4_prev) / 2 - ts_t2_prev;
+
+			if (!ts_offset_valid) {
+				/* First valid sample: fill all slots to prevent zero contamination */
+				for (int i = 0; i < 8; i++) {
+					ts_offsets[i] = raw;
+				}
+				ts_hist_idx = 1;
+			} else {
+				ts_offsets[ts_hist_idx++ % 8] = raw;
+			}
+			ts_offset_us    = ts_median();
+			ts_offset_valid = true;
+		}
+		ts_t1_prev = t1;
+		ts_t2_prev = t2;
+		send_timesync_resp(t2);
+		break;
+	}
 
 	default:
 		rx_unknown++;
@@ -373,5 +473,46 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_comms,
 );
 
 SHELL_CMD_REGISTER(comms, &sub_comms, "Comms commands", NULL);
+
+static int cmd_ts_status(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	if (ts_offset_valid) {
+		shell_print(sh, "ts: count=%u  valid=yes  offset=%lld us  age=%lld ms",
+			ts_count,
+			(long long)ts_offset_us,
+			(long long)(k_uptime_get() - ts_last_rx_ms));
+	} else {
+		shell_print(sh, "ts: count=%u  valid=no  offset=\xe2\x80\x94", ts_count);
+	}
+	return 0;
+}
+
+static int cmd_ts_clear(const struct shell *sh, size_t argc, char **argv)
+{
+	ARG_UNUSED(argc);
+	ARG_UNUSED(argv);
+	ts_count        = 0;
+	ts_offset_valid = false;
+	ts_offset_us    = 0;
+	ts_t1_prev      = 0;
+	ts_t2_prev      = 0;
+	ts_last_rx_ms   = 0;
+	ts_hist_idx     = 0;
+	for (int i = 0; i < 8; i++) {
+		ts_offsets[i] = 0LL;
+	}
+	shell_print(sh, "cleared");
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_ts,
+	SHELL_CMD(status, NULL, "Show timesync stats", cmd_ts_status),
+	SHELL_CMD(clear,  NULL, "Clear timesync state", cmd_ts_clear),
+	SHELL_SUBCMD_SET_END
+);
+
+SHELL_CMD_REGISTER(ts, &sub_ts, "Timesync commands", NULL);
 
 #endif /* CONFIG_SHELL */

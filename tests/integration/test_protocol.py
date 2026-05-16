@@ -27,10 +27,12 @@ TYPE_IMU   = 0x02
 TYPE_BAT   = 0x03
 TYPE_STATS = 0x04
 
-MSG_CMD_VEL   = 0x80
-MSG_REQ       = 0x81
-MSG_SET_RATE  = 0x82
-MSG_GET_STATS = 0x83
+MSG_CMD_VEL       = 0x80
+MSG_REQ           = 0x81
+MSG_SET_RATE      = 0x82
+MSG_GET_STATS     = 0x83
+MSG_TIMESYNC      = 0x84
+MSG_TIMESYNC_RESP = 0x05
 
 STREAM_NAMES = {TYPE_JOINT: "JOINT_STATE", TYPE_IMU: "IMU", TYPE_BAT: "BATTERY"}
 
@@ -64,6 +66,9 @@ def set_rate(stream_id: int, hz: int) -> bytes:
 def get_stats(clear: bool = False) -> bytes:
     return frame(MSG_GET_STATS, bytes([1]) if clear else b"")
 
+def encode_timesync(t1_us: int, t4_prev_us: int = 0) -> bytes:
+    return frame(MSG_TIMESYNC, struct.pack("<qq", t1_us, t4_prev_us))
+
 
 # ── Frame decoding ────────────────────────────────────────────────────────────
 
@@ -74,7 +79,14 @@ def decode_joint(payload: bytes) -> dict:
         vel_l, vel_r = struct.unpack_from("<hh", payload, 10)
         d["vel_left"] = vel_l
         d["vel_right"] = vel_r
+    if len(payload) >= 22:
+        pi_time_us, = struct.unpack_from("<q", payload, 14)
+        d["pi_time_us"] = pi_time_us
     return d
+
+def decode_timesync_resp(payload: bytes) -> dict:
+    t2_us, = struct.unpack("<q", payload[:8])
+    return {"t2_us": t2_us}
 
 def decode_imu(payload: bytes) -> dict:
     v = struct.unpack("<10h", payload[:20])
@@ -101,10 +113,11 @@ def decode_stats(payload: bytes) -> dict:
     }
 
 DECODERS = {
-    TYPE_JOINT: decode_joint,
-    TYPE_IMU:   decode_imu,
-    TYPE_BAT:   decode_bat,
-    TYPE_STATS: decode_stats,
+    TYPE_JOINT:        decode_joint,
+    TYPE_IMU:          decode_imu,
+    TYPE_BAT:          decode_bat,
+    TYPE_STATS:        decode_stats,
+    MSG_TIMESYNC_RESP: decode_timesync_resp,
 }
 
 
@@ -471,8 +484,86 @@ def test_get_stats(ser: serial.Serial, rx: Receiver):
               f"got {s3['rx_crc_err']}")
 
 
+def test_timesync(ser: serial.Serial, rx: Receiver):
+    section("9 · Timesync — STM32 computes Pi-domain timestamps")
+    rx.flush()
+
+    host_us = lambda: int(time.time() * 1e6)
+
+    # Exchange 1: t4_prev=0, STM32 records T1_prev/T2_prev, responds with T2
+    t1_1 = host_us()
+    safe_write(ser, encode_timesync(t1_1, 0))
+    resp1 = rx.recv_type(MSG_TIMESYNC_RESP, timeout=2.0)
+    ok = check("Exchange 1: TIMESYNC_RESP received", resp1 is not None)
+    if not ok:
+        return
+    t4_1 = host_us()
+    check("Exchange 1: T2 is non-zero", resp1[2]["t2_us"] != 0,
+          f"t2={resp1[2]['t2_us']}")
+
+    # Exchange 2: STM32 now has all four timestamps and computes offset
+    time.sleep(0.1)
+    t1_2 = host_us()
+    safe_write(ser, encode_timesync(t1_2, t4_1))
+    resp2 = rx.recv_type(MSG_TIMESYNC_RESP, timeout=2.0)
+    ok = check("Exchange 2: TIMESYNC_RESP received", resp2 is not None)
+    if not ok:
+        return
+
+    # After 2nd exchange offset should be valid — request a JOINT frame
+    time.sleep(0.05)
+    safe_write(ser, req(TYPE_JOINT))
+    jf = rx.recv_type(TYPE_JOINT, timeout=1.0)
+    ok = check("JOINT frame received after timesync", jf is not None)
+    if not ok:
+        return
+
+    d = jf[2]
+    ok = check("JOINT frame has pi_time_us field", d is not None and "pi_time_us" in d)
+    if not ok:
+        return
+    pi_us = d["pi_time_us"]
+    check("pi_time_us is non-zero after 2nd exchange", pi_us != 0, f"got {pi_us}")
+    if pi_us != 0:
+        delta_s = abs(pi_us - host_us()) / 1e6
+        check("pi_time_us within 1 s of host time", delta_s < 1.0,
+              f"delta={delta_s:.3f} s")
+
+    # Run 8 more rounds to fill the median window; check drift between frames
+    rx.flush()
+    t4 = host_us()
+    for _ in range(8):
+        time.sleep(0.1)
+        safe_write(ser, encode_timesync(host_us(), t4))
+        r = rx.recv_type(MSG_TIMESYNC_RESP, timeout=1.0)
+        if r:
+            t4 = host_us()
+
+    # Collect 5 consecutive JOINT frames and check drift
+    safe_write(ser, set_rate(TYPE_JOINT, 20))
+    time.sleep(0.05)
+    joint_frames = []
+    for _ in range(5):
+        jf = rx.recv_type(TYPE_JOINT, timeout=0.5)
+        if jf and jf[2] and "pi_time_us" in jf[2]:
+            joint_frames.append(jf[2]["pi_time_us"])
+    safe_write(ser, set_rate(TYPE_JOINT, 0))
+    rx.flush()
+
+    if len(joint_frames) >= 2:
+        max_drift = 0
+        for i in range(1, len(joint_frames)):
+            period_us = joint_frames[i] - joint_frames[i - 1]
+            drift = abs(period_us - 50000)  # expect ~50 ms = 50000 µs
+            max_drift = max(max_drift, drift)
+        check("Consecutive JOINT pi_time_us drift < 500 µs", max_drift < 500,
+              f"max_drift={max_drift} µs")
+    else:
+        print(f"  {INFO} (skipping drift check — too few frames with pi_time_us)")
+
+
 def test_stress_rx(ser: serial.Serial, rx: Receiver):
-    section("9 · Stress RX — firmware handles sustained frame flood")
+    section("10 · Stress RX — firmware handles sustained frame flood")
     rx.flush()
 
     # Establish connection, then clear stats baseline
@@ -519,7 +610,7 @@ def test_stress_rx(ser: serial.Serial, rx: Receiver):
 
 
 def test_stress_tx(ser: serial.Serial, rx: Receiver):
-    section("10 · Stress TX — Pi receives sustained high-rate streams")
+    section("11 · Stress TX — Pi receives sustained high-rate streams")
     rx.flush()
 
     decode_err_before = rx.rx_decode_err
@@ -560,7 +651,7 @@ def test_stress_tx(ser: serial.Serial, rx: Receiver):
 
 
 def test_stress_bidir(ser: serial.Serial, rx: Receiver):
-    section("11 · Stress bidirectional — full-duplex sustained load")
+    section("12 · Stress bidirectional — full-duplex sustained load")
     rx.flush()
 
     decode_err_before = rx.rx_decode_err
@@ -650,6 +741,7 @@ def main():
         test_watchdog(ser, rx)
         test_bad_crc(ser, rx)
         test_get_stats(ser, rx)
+        test_timesync(ser, rx)
         test_stress_rx(ser, rx)
         test_stress_tx(ser, rx)
         test_stress_bidir(ser, rx)

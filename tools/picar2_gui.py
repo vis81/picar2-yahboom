@@ -90,6 +90,9 @@ def decode_joint(payload: bytes) -> dict:
         vel_l, vel_r = struct.unpack_from("<hh", payload, 10)
         d["vel_left"] = vel_l
         d["vel_right"] = vel_r
+    if len(payload) >= 22:
+        pi_time_us, = struct.unpack_from("<q", payload, 14)
+        d["pi_time_us"] = pi_time_us
     return d
 
 def decode_imu(payload: bytes) -> dict:
@@ -571,6 +574,8 @@ class App(tk.Tk):
                     f"\nvel_l={data['vel_left']:+6d} °/s"
                     f"   vel_r={data['vel_right']:+6d} °/s"
                 )
+            if "pi_time_us" in data and data["pi_time_us"] != 0:
+                txt += f"\npi_t={data['pi_time_us']/1e6:.3f} s"
         elif sid == TYPE_IMU:
             a, g, m = data["accel"], data["gyro"], data["magn"]
             txt = (
