@@ -3,7 +3,7 @@
 
 Usage:
     python3 tools/picar2_gui.py
-    python3 tools/picar2_gui.py --port /dev/ttyUSB0 --baud 921600
+    python3 tools/picar2_gui.py --port /dev/ttyUSB0 --baud 460800
 
 Controls:
     Left / Right sliders : wheel velocity in mm/s (-3000 … +3000)
