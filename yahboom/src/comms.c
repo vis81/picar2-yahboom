@@ -87,25 +87,6 @@ static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
 	}
 }
 
-static int64_t ts_median(void)
-{
-	int64_t tmp[8];
-
-	for (int i = 0; i < 8; i++) {
-		tmp[i] = ts_offsets[i];
-	}
-	for (int i = 1; i < 8; i++) {
-		int64_t key = tmp[i];
-		int j = i - 1;
-
-		while (j >= 0 && tmp[j] > key) {
-			tmp[j + 1] = tmp[j];
-			j--;
-		}
-		tmp[j + 1] = key;
-	}
-	return tmp[4];
-}
 
 static void send_timesync_resp(int64_t t2)
 {
@@ -357,16 +338,8 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 			/* offset = Pi_midtime - STM32_receive, so pi_time = stm32_us + offset */
 			int64_t raw = (ts_t1_prev + t4_prev) / 2 - ts_t2_prev;
 
-			if (!ts_offset_valid) {
-				/* First valid sample: fill all slots to prevent zero contamination */
-				for (int i = 0; i < 8; i++) {
-					ts_offsets[i] = raw;
-				}
-				ts_hist_idx = 1;
-			} else {
-				ts_offsets[ts_hist_idx++ % 8] = raw;
-			}
-			ts_offset_us    = ts_median();
+			ts_offsets[ts_hist_idx++ % 8] = raw;
+			ts_offset_us    = raw;
 			ts_offset_valid = true;
 
 			if (ts_last_raw_valid) {
