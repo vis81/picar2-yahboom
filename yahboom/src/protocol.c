@@ -14,7 +14,13 @@ RING_BUF_DECLARE(rx_ring, 256);
 
 static const struct device *proto_uart;
 static proto_rx_cb_t proto_cb;
+static proto_err_cb_t proto_err_cb;
 static struct proto_stats stats;
+
+void proto_set_err_cb(proto_err_cb_t cb)
+{
+	proto_err_cb = cb;
+}
 
 static void rx_work_fn(struct k_work *w);
 static K_WORK_DEFINE(rx_work, rx_work_fn);
@@ -70,6 +76,9 @@ static void process_rx_byte(uint8_t b)
 	case S_LEN:
 		if (b > PROTO_MAX_LEN) {
 			stats.rx_len_err++;
+			if (proto_err_cb) {
+				proto_err_cb(PROTO_ERR_LEN, rx_type, b);
+			}
 			state = S_START;
 			break;
 		}
@@ -94,6 +103,9 @@ static void process_rx_byte(uint8_t b)
 			proto_cb(rx_type, rx_buf, rx_len);
 		} else {
 			stats.rx_crc_err++;
+			if (proto_err_cb) {
+				proto_err_cb(PROTO_ERR_CRC, rx_type, 0);
+			}
 		}
 		state = S_START;
 		break;

@@ -14,6 +14,12 @@
 
 typedef void (*proto_rx_cb_t)(uint8_t type, const uint8_t *payload, uint8_t len);
 
+/* Error types for proto_set_err_cb */
+#define PROTO_ERR_CRC  0u  /* CRC mismatch; detail unused */
+#define PROTO_ERR_LEN  1u  /* length > PROTO_MAX_LEN; detail = bad len byte */
+typedef void (*proto_err_cb_t)(uint8_t err, uint8_t msg_type, uint8_t detail);
+void proto_set_err_cb(proto_err_cb_t cb);
+
 struct proto_stats {
 	uint32_t rx_frames;   /* valid frames dispatched to callback */
 	uint32_t rx_crc_err;  /* frames dropped due to bad CRC */
