@@ -1,0 +1,15 @@
+# Copyright (c) 2024
+# SPDX-License-Identifier: Apache-2.0
+
+mainmenu "PICAR-2 Yahboom firmware"
+
+config COMMS_MON
+	bool "Enable comms monitor shell command"
+	depends on SHELL
+	default y
+	help
+	  Enables the 'comms mon' shell command that prints incoming Pi→STM32
+	  frames in real time. Disable to save flash when the shell monitor
+	  is not needed.
+
+source "Kconfig.zephyr"
