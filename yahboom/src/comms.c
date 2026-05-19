@@ -28,6 +28,11 @@
 /* STM32 → Pi timesync response */
 #define MSG_TIMESYNC_RESP 0x05
 
+/* STM32 → Pi PID velocity telemetry (separate timer, outside STREAM_MAX array) */
+#define STREAM_PID    0x06
+
+#define COMMS_KO 100  /* gain scale factor, matches DEF_KO in motor.c */
+
 static inline int64_t decode_le64(const uint8_t *p)
 {
 	return (int64_t)((uint64_t)sys_get_le32(p) |
@@ -49,6 +54,14 @@ static struct k_work  stream_wrk[STREAM_MAX];
 static uint32_t tx_frames[STREAM_MAX];
 static uint32_t rx_unknown;
 static uint32_t rx_short;
+
+/* Last CMD_VEL setpoints — mirrored into STREAM_PID */
+static int32_t cmd_vel_L;
+static int32_t cmd_vel_R;
+
+/* PID velocity telemetry stream (own timer, independent of stream_tmr[]) */
+static struct k_timer pid_tmr;
+static struct k_work  pid_wrk;
 
 /* Timesync state */
 static uint32_t ts_count;
@@ -89,6 +102,32 @@ static void send_timesync_resp(int64_t t2)
 	sys_put_le32((uint32_t)((uint64_t)t2 & 0xFFFFFFFFu), &payload[0]);
 	sys_put_le32((uint32_t)((uint64_t)t2 >> 32),         &payload[4]);
 	send_frame(MSG_TIMESYNC_RESP, payload, 8);
+}
+
+static void send_pid_state(void)
+{
+	int32_t al = 0, ar = 0;
+	uint8_t payload[8];
+
+	motor_vel(MOTOR_L, &al);
+	motor_vel(MOTOR_R, &ar);
+	sys_put_le16((uint16_t)(int16_t)cmd_vel_L, &payload[0]);
+	sys_put_le16((uint16_t)(int16_t)al,         &payload[2]);
+	sys_put_le16((uint16_t)(int16_t)cmd_vel_R, &payload[4]);
+	sys_put_le16((uint16_t)(int16_t)ar,         &payload[6]);
+	send_frame(STREAM_PID, payload, sizeof(payload));
+}
+
+static void pid_work_fn(struct k_work *w)
+{
+	ARG_UNUSED(w);
+	send_pid_state();
+}
+
+static void pid_timer_fn(struct k_timer *t)
+{
+	ARG_UNUSED(t);
+	k_work_submit(&pid_wrk);
 }
 
 static void send_joint_state(void)
@@ -219,8 +258,10 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 			rx_short++;
 			break;
 		}
-		motor_speed(MOTOR_L, (int32_t)(int16_t)sys_get_le16(&payload[0]));
-		motor_speed(MOTOR_R, (int32_t)(int16_t)sys_get_le16(&payload[2]));
+		cmd_vel_L = (int32_t)(int16_t)sys_get_le16(&payload[0]);
+		cmd_vel_R = (int32_t)(int16_t)sys_get_le16(&payload[2]);
+		motor_speed(MOTOR_L, cmd_vel_L);
+		motor_speed(MOTOR_R, cmd_vel_R);
 		servo_steer(payload[4]);
 		break;
 
@@ -240,6 +281,21 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		uint8_t id = payload[0];
 		uint16_t hz = sys_get_le16(&payload[1]);
 
+		if (id == STREAM_PID) {
+			if (hz == 0) {
+				k_timer_stop(&pid_tmr);
+			} else {
+				uint32_t period_ms = 1000u / hz;
+
+				if (period_ms == 0) {
+					period_ms = 1;
+				}
+				k_timer_start(&pid_tmr,
+					      K_MSEC(period_ms), K_MSEC(period_ms));
+			}
+			break;
+		}
+
 		if (id < 1 || id >= STREAM_MAX) {
 			break;
 		}
@@ -253,6 +309,25 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 			}
 			k_timer_start(&stream_tmr[id],
 				      K_MSEC(period_ms), K_MSEC(period_ms));
+		}
+		break;
+	}
+
+	case MSG_PID_SET: {
+		if (len < 7) {
+			rx_short++;
+			break;
+		}
+		uint8_t mid = payload[0];
+		int32_t kp  = (int32_t)(int16_t)sys_get_le16(&payload[1]);
+		int32_t ki  = (int32_t)(int16_t)sys_get_le16(&payload[3]);
+		int32_t kd  = (int32_t)(int16_t)sys_get_le16(&payload[5]);
+
+		if (mid == 0 || mid == 2) {
+			motor_set_pid_gains(MOTOR_L, kp, kd, ki);
+		}
+		if (mid == 1 || mid == 2) {
+			motor_set_pid_gains(MOTOR_R, kp, kd, ki);
 		}
 		break;
 	}
@@ -319,6 +394,9 @@ void comms_init(void)
 		k_timer_init(&stream_tmr[i], timer_expiry_fn, NULL);
 		k_timer_user_data_set(&stream_tmr[i], (void *)(uintptr_t)i);
 	}
+
+	k_work_init(&pid_wrk, pid_work_fn);
+	k_timer_init(&pid_tmr, pid_timer_fn, NULL);
 
 	proto_init(pi_uart, comms_rx);
 }

@@ -67,7 +67,7 @@
         counts-per-rev = <824>;
         pwms = <&pwm_t8_m1_m2 1 PWM_MSEC(1) PWM_POLARITY_NORMAL>,
 				<&pwm_t8_m1_m2 2 PWM_MSEC(1) PWM_POLARITY_NORMAL>;
-		pid-gains = <50 0 240 100>;
+		pid-gains = <91 0 100 100>; /* Kp=0.91 Kd=0 Ki=1.0 Ko=100 */
         status = "okay";
     };
 
@@ -77,7 +77,7 @@
         counts-per-rev = <824>;
         pwms = <&pwm_t8_m1_m2 4 PWM_MSEC(1) PWM_POLARITY_NORMAL>,
 				<&pwm_t8_m1_m2 3 PWM_MSEC(1) PWM_POLARITY_NORMAL>;
-		pid-gains = <50 0 240 100>;
+		pid-gains = <91 0 100 100>; /* Kp=0.91 Kd=0 Ki=1.0 Ko=100 */
         status = "okay";
     };
 

@@ -70,6 +70,12 @@ int motor_vel(enum motor_id id, int32_t *vel) {
 	return motor_get_velocity(motors[id], vel);
 }
 
+int motor_set_pid_gains(enum motor_id id, int32_t kp, int32_t kd, int32_t ki) {
+	if (id > MOTOR_LAST)
+		return -EINVAL;
+	return motor_set_pid(motors[id], kp, kd, ki, DEF_KO);
+}
+
 
 #ifdef CONFIG_SHELL
 static int cmd_motor_throttle(const struct shell *sh, size_t argc, char **argv)
@@ -199,8 +205,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_motor,
 	SHELL_CMD(throttle, NULL, "l|r dir throttle", cmd_motor_throttle),
 	SHELL_CMD(pos, NULL, "l|r", cmd_motor_pos),
 	SHELL_CMD(vel, NULL, "l|r", cmd_motor_vel),
-	SHELL_CMD(pid, NULL, "l|r", cmd_motor_pid),
-	SHELL_CMD(debug, NULL, "l|r", cmd_motor_debug),
+	SHELL_CMD(pid, NULL, "l|r kp kd ki", cmd_motor_pid),
+	SHELL_CMD(debug, NULL, "l|r <1|0>", cmd_motor_debug),
 	SHELL_SUBCMD_SET_END /* Array terminated. */
 );
 

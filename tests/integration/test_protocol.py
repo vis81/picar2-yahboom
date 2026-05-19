@@ -33,6 +33,9 @@ MSG_SET_RATE      = 0x82
 MSG_GET_STATS     = 0x83
 MSG_TIMESYNC      = 0x84
 MSG_TIMESYNC_RESP = 0x05
+MSG_PID_SET       = 0x85
+
+STREAM_PID = 0x06
 
 STREAM_NAMES = {TYPE_JOINT: "JOINT_STATE", TYPE_IMU: "IMU", TYPE_BAT: "BATTERY"}
 
@@ -69,6 +72,10 @@ def get_stats(clear: bool = False) -> bytes:
 def encode_timesync(t1_us: int, t4_prev_us: int = 0) -> bytes:
     return frame(MSG_TIMESYNC, struct.pack("<qq", t1_us, t4_prev_us))
 
+def encode_pid_set(motor_id: int, kp: float, ki: float, kd: float) -> bytes:
+    return frame(MSG_PID_SET, struct.pack("<Bhhh",
+        motor_id, int(kp * 100), int(ki * 100), int(kd * 100)))
+
 
 # ── Frame decoding ────────────────────────────────────────────────────────────
 
@@ -101,6 +108,11 @@ def decode_bat(payload: bytes) -> dict:
     mv, pct, _ = struct.unpack("<HBB", payload[:4])
     return {"voltage_mv": mv, "charge_pct": pct}
 
+def decode_pid_stream(payload: bytes) -> dict:
+    sp_l, act_l, sp_r, act_r = struct.unpack_from("<hhhh", payload)
+    return {"setpoint_L": sp_l, "actual_L": act_l,
+            "setpoint_R": sp_r, "actual_R": act_r}
+
 def decode_stats(payload: bytes) -> dict:
     fields = struct.unpack_from("<6I", payload, 0)
     return {
@@ -118,6 +130,7 @@ DECODERS = {
     TYPE_BAT:          decode_bat,
     TYPE_STATS:        decode_stats,
     MSG_TIMESYNC_RESP: decode_timesync_resp,
+    STREAM_PID:        decode_pid_stream,
 }
 
 
@@ -260,7 +273,7 @@ def fetch_stats(ser: serial.Serial, rx: Receiver,
     return item[2] if item and item[2] else None
 
 def stop_all_streams(ser: serial.Serial):
-    for sid in (TYPE_JOINT, TYPE_IMU, TYPE_BAT):
+    for sid in (TYPE_JOINT, TYPE_IMU, TYPE_BAT, STREAM_PID):
         safe_write(ser, set_rate(sid, 0))
 
 def halt_motors(ser: serial.Serial):
@@ -705,6 +718,106 @@ def test_stress_bidir(ser: serial.Serial, rx: Receiver):
     rx.flush()
 
 
+def test_pid_set(ser: serial.Serial, rx: Receiver):
+    section("13 · MSG_PID_SET — firmware applies PID gains without crash")
+    rx.flush()
+
+    stop, bg = send_cmd_vel_background(ser)
+    time.sleep(0.2)
+
+    # Apply gains to both motors
+    safe_write(ser, encode_pid_set(2, kp=2.0, ki=0.1, kd=0.05))
+    time.sleep(0.05)
+
+    # Firmware should still respond to REQ after gain update
+    safe_write(ser, req(TYPE_JOINT))
+    f = rx.recv_type(TYPE_JOINT, timeout=1.0)
+    check("JOINT frame received after PID_SET(both, 2.0, 0.1, 0.05)", f is not None)
+
+    # Reset to zero gains — firmware should still be alive
+    safe_write(ser, encode_pid_set(2, kp=0.0, ki=0.0, kd=0.0))
+    time.sleep(0.05)
+    safe_write(ser, req(TYPE_JOINT))
+    f = rx.recv_type(TYPE_JOINT, timeout=1.0)
+    check("JOINT frame received after PID_SET(both, 0, 0, 0)", f is not None)
+
+    stop.set(); bg.join(timeout=0.2)
+    halt_motors(ser)
+    rx.flush()
+
+
+def test_pid_stream(ser: serial.Serial, rx: Receiver):
+    section("14 · STREAM_PID — periodic velocity telemetry via MSG_SET_RATE")
+    rx.flush()
+
+    stop, bg = send_cmd_vel_background(ser)
+    time.sleep(0.2)
+    rx.flush()
+
+    # Start STREAM_PID at 20 Hz
+    safe_write(ser, set_rate(STREAM_PID, 20))
+    time.sleep(0.05)
+
+    frames = []
+    for _ in range(5):
+        f = rx.recv_type(STREAM_PID, timeout=0.3)
+        if f:
+            frames.append(f)
+
+    check("5 STREAM_PID frames received at 20 Hz", len(frames) == 5,
+          f"got {len(frames)}")
+
+    decode_ok = all(f[1] is not None and len(f[1]) == 8 for f in frames)
+    check("Each STREAM_PID frame is 8 bytes", decode_ok,
+          f"{sum(1 for f in frames if len(f[1]) != 8)} wrong-size" if not decode_ok else "")
+
+    if frames and frames[0][2]:
+        print(f"  {INFO}   sample: {frames[0][2]}")
+
+    # Stop stream and verify silence
+    safe_write(ser, set_rate(STREAM_PID, 0))
+    time.sleep(0.05)
+    rx.flush()
+    time.sleep(0.2)
+    leftover = [f for f in rx.drain(0.2) if f[0] == STREAM_PID]
+    check("STREAM_PID stops after SET_RATE(STREAM_PID, 0)", len(leftover) == 0,
+          f"got {len(leftover)} stray frames" if leftover else "")
+
+    stop.set(); bg.join(timeout=0.2)
+    halt_motors(ser)
+    rx.flush()
+
+
+def test_pid_set_short(ser: serial.Serial, rx: Receiver):
+    section("15 · MSG_PID_SET short frame — rx_short counter increments")
+    rx.flush()
+
+    stop, bg = send_cmd_vel_background(ser)
+    time.sleep(0.2)
+
+    s_before = fetch_stats(ser, rx)
+    ok = check("Stats received before short-frame test", s_before is not None)
+    if not ok:
+        stop.set(); bg.join(timeout=0.2)
+        return
+
+    # Send a valid-CRC frame with only 3 bytes payload (< 7 required)
+    short = frame(MSG_PID_SET, bytes([2, 0, 0]))
+    safe_write(ser, short)
+    time.sleep(0.1)
+
+    s_after = fetch_stats(ser, rx)
+    ok = check("Stats received after short-frame test", s_after is not None)
+    if ok:
+        delta = s_after["rx_short"] - s_before["rx_short"]
+        check("rx_short incremented by 1 for truncated MSG_PID_SET", delta == 1,
+              f"delta={delta}")
+
+    stop.set(); bg.join(timeout=0.2)
+    halt_motors(ser)
+    rx.flush()
+
+
 # ── Main ──────────────────────────────────────────────────────────────────────
 
 def main():
@@ -745,6 +858,9 @@ def main():
         test_stress_rx(ser, rx)
         test_stress_tx(ser, rx)
         test_stress_bidir(ser, rx)
+        test_pid_set(ser, rx)
+        test_pid_stream(ser, rx)
+        test_pid_set_short(ser, rx)
     finally:
         stop_all_streams(ser)
         halt_motors(ser)

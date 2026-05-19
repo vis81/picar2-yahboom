@@ -28,7 +28,8 @@ static const struct shell *mon_shell;
 #define MON_FILT_TIMESYNC  BIT(4)
 #define MON_FILT_UNKNOWN   BIT(5)
 #define MON_FILT_ERR       BIT(6)
-#define MON_FILT_ALL       0x7Fu
+#define MON_FILT_PID_SET   BIT(7)
+#define MON_FILT_ALL       0xFFu
 static uint32_t mon_filter = MON_FILT_ALL;
 
 static void comms_mon_err(uint8_t err, uint8_t msg_type, uint8_t detail)
@@ -65,6 +66,7 @@ void comms_mon_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 	case MSG_SET_RATE:  fbit = MON_FILT_SET_RATE;   break;
 	case MSG_GET_STATS: fbit = MON_FILT_GET_STATS;  break;
 	case MSG_TIMESYNC:  fbit = MON_FILT_TIMESYNC;   break;
+	case MSG_PID_SET:   fbit = MON_FILT_PID_SET;    break;
 	default:            fbit = MON_FILT_UNKNOWN;     break;
 	}
 	if (!(mon_filter & fbit)) {
@@ -107,6 +109,20 @@ void comms_mon_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 				(long long)decode_le64(&payload[8]));
 		}
 		break;
+	case MSG_PID_SET:
+		if (len >= 7) {
+			int mid = payload[0];
+			float kp = (int16_t)sys_get_le16(&payload[1]) / 100.0f;
+			float ki = (int16_t)sys_get_le16(&payload[3]) / 100.0f;
+			float kd = (int16_t)sys_get_le16(&payload[5]) / 100.0f;
+
+			shell_print(sh,
+				"[%8lld] PID_SET  motor=%s kp=%.2f ki=%.2f kd=%.2f",
+				(long long)ms,
+				mid == 0 ? "L" : mid == 1 ? "R" : "LR",
+				(double)kp, (double)ki, (double)kd);
+		}
+		break;
 	default:
 		shell_print(sh, "[%8lld] UNKNOWN  type=0x%02x len=%u",
 			(long long)ms, type, len);
@@ -122,6 +138,7 @@ static const struct { const char *name; uint32_t bit; } filter_map[] = {
 	{ "timesync",  MON_FILT_TIMESYNC  },
 	{ "unknown",   MON_FILT_UNKNOWN   },
 	{ "err",       MON_FILT_ERR       },
+	{ "pid_set",   MON_FILT_PID_SET   },
 };
 
 static int cmd_mon_filter(const struct shell *sh, size_t argc, char **argv)
@@ -162,7 +179,7 @@ static int cmd_mon_filter(const struct shell *sh, size_t argc, char **argv)
 		}
 		if (!found) {
 			shell_error(sh,
-				"unknown: %s  valid: cmd_vel req set_rate get_stats timesync unknown err all",
+				"unknown: %s  valid: cmd_vel req set_rate get_stats timesync pid_set unknown err all",
 				argv[a]);
 			return -EINVAL;
 		}
@@ -190,8 +207,8 @@ static int cmd_comms_mon(const struct shell *sh, size_t argc, char **argv)
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_mon,
 	SHELL_CMD_ARG(filter, NULL,
-		"Show/set filter [all|cmd_vel|req|set_rate|get_stats|timesync|unknown|err]",
-		cmd_mon_filter, 1, 7),
+		"Show/set filter [all|cmd_vel|req|set_rate|get_stats|timesync|pid_set|unknown|err]",
+		cmd_mon_filter, 1, 8),
 	SHELL_SUBCMD_SET_END
 );
 
