@@ -84,7 +84,7 @@ int imu_get_data(struct imu_data *d)
 	for (int i = 0; i < 3; i++) {
 		d->accel[i] = (int16_t)(a[i].val1 * 1000 + a[i].val2 / 1000);
 		d->gyro[i]  = (int16_t)(g[i].val1 * 1000 + g[i].val2 / 1000);
-		d->magn[i]  = (int16_t)(m[i].val1 * 10   + m[i].val2 / 100000);
+		d->magn[i]  = (int16_t)(m[i].val1 * 1000 + m[i].val2 / 1000);
 	}
 	d->temp = (int16_t)(t.val1 * 100 + t.val2 / 10000);
 	return 0;
@@ -219,10 +219,10 @@ static int cmd_imu_cal_start(const struct shell *sh, size_t argc, char **argv)
 		return ret;
 	}
 
-	shell_print(sh, "done.  offsets  x: %d.%06d  y: %d.%06d  z: %d.%06d uT",
-		(int32_t)(mag_cal[0] / 1000000), (int32_t)abs(mag_cal[0] % 1000000),
-		(int32_t)(mag_cal[1] / 1000000), (int32_t)abs(mag_cal[1] % 1000000),
-		(int32_t)(mag_cal[2] / 1000000), (int32_t)abs(mag_cal[2] % 1000000));
+	shell_print(sh, "done.  offsets  x: %d.%01d  y: %d.%01d  z: %d.%01d µT",
+		(int32_t)(mag_cal[0] / 10000), (int32_t)abs((int32_t)((mag_cal[0] / 1000) % 10)),
+		(int32_t)(mag_cal[1] / 10000), (int32_t)abs((int32_t)((mag_cal[1] / 1000) % 10)),
+		(int32_t)(mag_cal[2] / 10000), (int32_t)abs((int32_t)((mag_cal[2] / 1000) % 10)));
 	return 0;
 }
 
@@ -232,10 +232,10 @@ static int cmd_imu_cal_show(const struct shell *sh, size_t argc, char **argv)
 		shell_print(sh, "not calibrated");
 		return 0;
 	}
-	shell_print(sh, "offsets  x: %d.%06d  y: %d.%06d  z: %d.%06d uT",
-		(int32_t)(mag_cal[0] / 1000000), (int32_t)abs(mag_cal[0] % 1000000),
-		(int32_t)(mag_cal[1] / 1000000), (int32_t)abs(mag_cal[1] % 1000000),
-		(int32_t)(mag_cal[2] / 1000000), (int32_t)abs(mag_cal[2] % 1000000));
+	shell_print(sh, "offsets  x: %d.%01d  y: %d.%01d  z: %d.%01d µT",
+		(int32_t)(mag_cal[0] / 10000), (int32_t)abs((int32_t)((mag_cal[0] / 1000) % 10)),
+		(int32_t)(mag_cal[1] / 10000), (int32_t)abs((int32_t)((mag_cal[1] / 1000) % 10)),
+		(int32_t)(mag_cal[2] / 10000), (int32_t)abs((int32_t)((mag_cal[2] / 1000) % 10)));
 	return 0;
 }
 
