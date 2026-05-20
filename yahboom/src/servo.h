@@ -6,11 +6,15 @@
 #ifndef _servo_h_
 #define _servo_h_
 
-int servo_init();
-int servo_steer(uint8_t val);
-int servo_get(uint8_t *pval);
+#include <stdint.h>
+
+int  servo_init(void);
+/* steer in tenths of degrees: 0 = center, +900 = 90° CW, -900 = 90° CCW */
+int  servo_steer(int16_t tenths_deg);
+int  servo_get(int16_t *tenths_deg);
 void servo_neutral_all(void);
-int servo_write_id(int id, uint8_t val);
-int servo_read_id(int id, uint8_t *val);
+/* low-level µs access used by the shell */
+int  servo_write_id(int id, uint16_t us);
+int  servo_read_id(int id, uint16_t *us);
 
 #endif

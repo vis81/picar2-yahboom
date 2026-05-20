@@ -18,7 +18,6 @@
 #include <zephyr/drivers/rc.h>
 #include <zephyr/drivers/uart.h>
 #include <zephyr/drivers/uart_pipe.h>
-#include "zephyr/drivers/pwm_servo.h"
 #include "zephyr/drivers/motor.h"
 #include <zephyr/logging/log.h>
 #include <zephyr/shell/shell.h>

@@ -72,18 +72,18 @@ static int cmd_selftest(const struct shell *sh, size_t argc, char **argv)
 		snprintk(name, sizeof(name), "servo %d", i);
 		total++;
 
-		uint8_t val = 0;
-		ret = servo_write_id(i, 30);
+		uint16_t val = 0;
+		ret = servo_write_id(i, 1200);
 		k_msleep(1000);
 		if (!ret) {
 			ret = servo_read_id(i, &val);
 		}
-		servo_write_id(i, 50);
+		servo_neutral_all();
 
 		if (ret) {
 			_result(sh, false, name, "error %d", ret);
-		} else if (val != 30) {
-			_result(sh, false, name, "readback %u, expect 30", val);
+		} else if (val != 1200) {
+			_result(sh, false, name, "readback %u, expect 1200", val);
 		} else {
 			_result(sh, true, name, "");
 			pass++;

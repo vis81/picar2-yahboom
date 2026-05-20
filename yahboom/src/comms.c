@@ -133,8 +133,8 @@ static void pid_timer_fn(struct k_timer *t)
 static void send_joint_state(void)
 {
 	int32_t el = 0, er = 0, vl = 0, vr = 0;
-	uint8_t steer = 0;
-	uint8_t payload[22];
+	int16_t steer = 0;
+	uint8_t payload[23];
 
 	motor_pos(MOTOR_L, &el);
 	motor_pos(MOTOR_R, &er);
@@ -144,15 +144,15 @@ static void send_joint_state(void)
 
 	sys_put_le32((uint32_t)el, &payload[0]);
 	sys_put_le32((uint32_t)er, &payload[4]);
-	payload[8] = steer;
-	payload[9] = js_seq++;
-	sys_put_le16((uint16_t)(int16_t)vl, &payload[10]);
-	sys_put_le16((uint16_t)(int16_t)vr, &payload[12]);
+	sys_put_le16(steer,                    &payload[8]);
+	payload[10] = js_seq++;
+	sys_put_le16((uint16_t)(int16_t)vl,   &payload[11]);
+	sys_put_le16((uint16_t)(int16_t)vr,   &payload[13]);
 
 	int64_t pi_time = ts_offset_valid ? get_uptime_us() + ts_offset_us : 0LL;
 
-	sys_put_le32((uint32_t)((uint64_t)pi_time & 0xFFFFFFFFu), &payload[14]);
-	sys_put_le32((uint32_t)((uint64_t)pi_time >> 32),         &payload[18]);
+	sys_put_le32((uint32_t)((uint64_t)pi_time & 0xFFFFFFFFu), &payload[15]);
+	sys_put_le32((uint32_t)((uint64_t)pi_time >> 32),         &payload[19]);
 
 	send_frame(STREAM_JOINT, payload, sizeof(payload));
 }
@@ -254,7 +254,7 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 
 	switch (type) {
 	case MSG_CMD_VEL:
-		if (len < 5) {
+		if (len < 6) {
 			rx_short++;
 			break;
 		}
@@ -262,7 +262,7 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		cmd_vel_R = (int32_t)(int16_t)sys_get_le16(&payload[2]);
 		motor_speed(MOTOR_L, cmd_vel_L);
 		motor_speed(MOTOR_R, cmd_vel_R);
-		servo_steer(payload[4]);
+		servo_steer((int16_t)sys_get_le16(&payload[4]));
 		break;
 
 	case MSG_REQ:

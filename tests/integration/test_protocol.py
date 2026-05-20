@@ -57,8 +57,9 @@ def frame(msg_type: int, payload: bytes = b"") -> bytes:
     hdr = bytes([PROTO_START, msg_type, len(payload)])
     return hdr + payload + bytes([crc8(bytes([msg_type, len(payload)]) + payload)])
 
-def cmd_vel(left_mms: int, right_mms: int, steering: int) -> bytes:
-    return frame(MSG_CMD_VEL, struct.pack("<hhB", left_mms, right_mms, steering))
+def cmd_vel(left_mms: int, right_mms: int, steering: int = 0) -> bytes:
+    """steering in tenths of degrees: 0 = center, +900 = 90° CW, -900 = 90° CCW"""
+    return frame(MSG_CMD_VEL, struct.pack("<hhh", left_mms, right_mms, steering))
 
 def req(stream_id: int) -> bytes:
     return frame(MSG_REQ, bytes([stream_id]))
@@ -80,14 +81,14 @@ def encode_pid_set(motor_id: int, kp: float, ki: float, kd: float) -> bytes:
 # ── Frame decoding ────────────────────────────────────────────────────────────
 
 def decode_joint(payload: bytes) -> dict:
-    enc_l, enc_r, steer, seq = struct.unpack("<iiBB", payload[:10])
+    enc_l, enc_r, steer, seq = struct.unpack("<iihB", payload[:11])
     d = {"enc_left": enc_l, "enc_right": enc_r, "steering": steer, "seq": seq}
-    if len(payload) >= 14:
-        vel_l, vel_r = struct.unpack_from("<hh", payload, 10)
+    if len(payload) >= 15:
+        vel_l, vel_r = struct.unpack_from("<hh", payload, 11)
         d["vel_left"] = vel_l
         d["vel_right"] = vel_r
-    if len(payload) >= 22:
-        pi_time_us, = struct.unpack_from("<q", payload, 14)
+    if len(payload) >= 23:
+        pi_time_us, = struct.unpack_from("<q", payload, 15)
         d["pi_time_us"] = pi_time_us
     return d
 
@@ -254,7 +255,7 @@ def safe_write(ser: serial.Serial, data: bytes) -> None:
     with _ser_lock:
         ser.write(data)
 
-def send_cmd_vel_background(ser: serial.Serial, left=0, right=0, steer=50):
+def send_cmd_vel_background(ser: serial.Serial, left=0, right=0, steer=0):
     """Start a background thread sending CMD_VEL at 100 Hz. Returns (stop_event, thread)."""
     stop = threading.Event()
     def loop():
@@ -277,7 +278,7 @@ def stop_all_streams(ser: serial.Serial):
         safe_write(ser, set_rate(sid, 0))
 
 def halt_motors(ser: serial.Serial):
-    safe_write(ser, cmd_vel(0, 0, 50))
+    safe_write(ser, cmd_vel(0, 0, 0))
 
 def seq_gaps(frames: list) -> tuple[int, int]:
     """Return (gap_count, missing_frame_count) from JOINT_STATE seq fields."""
@@ -386,7 +387,7 @@ def test_cmd_vel_motors(ser: serial.Serial, rx: Receiver):
     rx.flush()
 
     print(f"  {INFO} Sending forward 500 mm/s for 1 s ...")
-    stop, bg = send_cmd_vel_background(ser, left=500, right=500, steer=50)
+    stop, bg = send_cmd_vel_background(ser, left=500, right=500, steer=0)
     time.sleep(0.2)
     rx.flush()
     time.sleep(0.8)
@@ -403,7 +404,7 @@ def test_cmd_vel_motors(ser: serial.Serial, rx: Receiver):
     else:
         print(f"  {INFO} (skipping encoder-advance check — too few JOINT frames)")
 
-    steer_stop, steer_bg = send_cmd_vel_background(ser, left=0, right=0, steer=20)
+    steer_stop, steer_bg = send_cmd_vel_background(ser, left=0, right=0, steer=180)
     time.sleep(0.15)
     steer_stop.set()
     steer_bg.join(timeout=0.2)
@@ -412,7 +413,7 @@ def test_cmd_vel_motors(ser: serial.Serial, rx: Receiver):
     f = rx.recv_type(TYPE_JOINT, timeout=0.5)
     if f and f[2]:
         check("Steering echoed correctly in JOINT_STATE",
-              f[2]["steering"] == 20, f"got {f[2]['steering']}")
+              f[2]["steering"] == 180, f"got {f[2]['steering']}")
 
     stop_all_streams(ser)
     halt_motors(ser)
@@ -437,7 +438,7 @@ def test_watchdog(ser: serial.Serial, rx: Receiver):
     print(f"  {INFO} Silence for 800 ms (watchdog threshold: 500 ms) ...")
     time.sleep(0.8)
 
-    safe_write(ser, cmd_vel(0, 0, 50))
+    safe_write(ser, cmd_vel(0, 0, 0))
     time.sleep(0.05)
     safe_write(ser, req(TYPE_JOINT))
     f = rx.recv_type(TYPE_JOINT, timeout=0.5)
@@ -448,7 +449,7 @@ def test_bad_crc(ser: serial.Serial, rx: Receiver):
     section("7 · Bad CRC — silently dropped, firmware does not crash")
     rx.flush()
 
-    good = cmd_vel(0, 0, 50)
+    good = cmd_vel(0, 0, 0)
     bad  = good[:-1] + bytes([good[-1] ^ 0xFF])
     safe_write(ser, bad)
     time.sleep(0.1)
@@ -595,7 +596,7 @@ def test_stress_rx(ser: serial.Serial, rx: Receiver):
     t_end  = t_next + 3.0
     sent = 0
     while t_next < t_end:
-        safe_write(ser, cmd_vel(0, 0, 50))
+        safe_write(ser, cmd_vel(0, 0, 0))
         sent += 1
         t_next += interval
         wait = t_next - time.monotonic()

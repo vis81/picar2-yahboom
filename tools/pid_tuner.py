@@ -56,8 +56,9 @@ def frame(msg_type: int, payload: bytes = b"") -> bytes:
     hdr = bytes([PROTO_START, msg_type, len(payload)])
     return hdr + payload + bytes([crc8(bytes([msg_type, len(payload)]) + payload)])
 
-def cmd_vel(left: int, right: int, steering: int = 50) -> bytes:
-    return frame(MSG_CMD_VEL, struct.pack("<hhB", left, right, steering))
+def cmd_vel(left: int, right: int, steering: int = 0) -> bytes:
+    """steering in tenths of degrees: 0 = center, +900 = 90° CW"""
+    return frame(MSG_CMD_VEL, struct.pack("<hhh", left, right, steering))
 
 def set_rate(stream_id: int, hz: int) -> bytes:
     return frame(MSG_SET_RATE, struct.pack("<BH", stream_id, hz))

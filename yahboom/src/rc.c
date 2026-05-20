@@ -64,7 +64,7 @@ int rc_init() {
 
 static void callback(struct input_event *evt) {
 	int ret;
-	static uint32_t pulse_width = 50;
+	static int32_t pulse_width = 0;
 	static uint32_t throttle = 0;
 	static int32_t vel = 0;
 	static uint32_t dir = DIR_STOP;
@@ -72,7 +72,7 @@ static void callback(struct input_event *evt) {
 
 	switch (evt->code) {
 	case INPUT_ABS_RUDDER:
-		pulse_width = PAM(evt->value, 0xF0, 0x720);
+		pulse_width = (int32_t)PAM2(evt->value, 0xF0, 0x720, -900, 900);
 		break;
 	case INPUT_ABS_GAS:
 		int32_t c1 = evt->value - 0x3e8;
@@ -105,7 +105,7 @@ static void callback(struct input_event *evt) {
 		printk("pw %u d %u thr %u vel %d brk %u mode %u\n", pulse_width, dir, throttle, vel, brake, rc_mode);
 	}
 	if (rc_enable) {
-		ret = servo_steer(pulse_width);
+		ret = servo_steer((int16_t)pulse_width);
 		if (ret < 0) {
 			printk("Error %d: failed to set pulse width\n", ret);
 		}
