@@ -36,7 +36,7 @@ static int16_t gyro_cal[3];
 static int imu_settings_set(const char *name, size_t len,
 			    settings_read_cb read_cb, void *cb_arg)
 {
-	if (strcmp(name, "offsets") == 0 && len == sizeof(mag_cal)) {
+	if (strcmp(name, "mag_offsets") == 0 && len == sizeof(mag_cal)) {
 		read_cb(cb_arg, mag_cal, sizeof(mag_cal));
 	} else if (strcmp(name, "gyro_offsets") == 0 && len == sizeof(gyro_cal)) {
 		read_cb(cb_arg, gyro_cal, sizeof(gyro_cal));
@@ -218,7 +218,7 @@ static int cmd_imu_cal_start(const struct shell *sh, size_t argc, char **argv)
 		mag_cal[i] = (mn[i] + mx[i]) / 2;
 	}
 
-	int ret = settings_save_one("imu/offsets", mag_cal, sizeof(mag_cal));
+	int ret = settings_save_one("imu/mag_offsets", mag_cal, sizeof(mag_cal));
 
 	if (ret) {
 		shell_error(sh, "settings save failed: %d", ret);
@@ -248,7 +248,7 @@ static int cmd_imu_cal_show(const struct shell *sh, size_t argc, char **argv)
 static int cmd_imu_cal_reset(const struct shell *sh, size_t argc, char **argv)
 {
 	mag_cal[0] = mag_cal[1] = mag_cal[2] = 0;
-	settings_delete("imu/offsets");
+	settings_delete("imu/mag_offsets");
 	shell_print(sh, "calibration cleared");
 	return 0;
 }
@@ -319,6 +319,12 @@ static int cmd_imu_cal_gyro_reset(const struct shell *sh, size_t argc, char **ar
 	return 0;
 }
 
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal_mag,
+	SHELL_CMD(show,  NULL, "Print magnetometer offsets", cmd_imu_cal_show),
+	SHELL_CMD(reset, NULL, "Clear magnetometer calibration", cmd_imu_cal_reset),
+	SHELL_SUBCMD_SET_END
+);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal_gyro,
 	SHELL_CMD(show,  NULL, "Print gyro bias", cmd_imu_cal_gyro_show),
 	SHELL_CMD(reset, NULL, "Clear gyro calibration", cmd_imu_cal_gyro_reset),
@@ -326,10 +332,8 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal_gyro,
 );
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal,
-	SHELL_CMD(start, NULL, "Collect hard-iron offsets (rotate board for 15 s)", cmd_imu_cal_start),
-	SHELL_CMD(show,  NULL, "Print magnetometer offsets", cmd_imu_cal_show),
-	SHELL_CMD(reset, NULL, "Clear magnetometer calibration", cmd_imu_cal_reset),
-	SHELL_CMD(gyro,  &sub_imu_cal_gyro, "Gyro zero-rate bias calibration", cmd_imu_cal_gyro),
+	SHELL_CMD(mag,  &sub_imu_cal_mag,  "Magnetometer hard-iron calibration", cmd_imu_cal_start),
+	SHELL_CMD(gyro, &sub_imu_cal_gyro, "Gyro zero-rate bias calibration",    cmd_imu_cal_gyro),
 	SHELL_SUBCMD_SET_END
 );
 
