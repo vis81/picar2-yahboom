@@ -20,9 +20,10 @@ LOG_MODULE_REGISTER(imu, LOG_LEVEL_DBG);
 #define MPU9250_REG_PWR_MGMT_1 0x6B
 #define MPU9250_PWR_SLEEP    BIT(6)
 
-#define CAL_DURATION_MS       15000
-#define CAL_GYRO_DURATION_MS   5000
-#define CAL_SAMPLE_MS            50
+#define CAL_DURATION_MS        15000
+#define CAL_GYRO_DURATION_MS    5000
+#define CAL_ACCEL_DURATION_MS   3000
+#define CAL_SAMPLE_MS             50
 
 static const struct device *imu     = DEVICE_DT_GET(DT_NODELABEL(mpu9250));
 static const struct device *i2c_bus = DEVICE_DT_GET(DT_NODELABEL(i2c3));
@@ -33,6 +34,9 @@ static int64_t mag_cal[3];
 /* Gyro zero-rate bias in ×0.001 rad/s; zero = uncalibrated */
 static int16_t gyro_cal[3];
 
+/* Accel scale factor ×1000 (e.g. 1148 = 1.148×); zero = uncalibrated */
+static int16_t accel_scale;
+
 static int imu_settings_set(const char *name, size_t len,
 			    settings_read_cb read_cb, void *cb_arg)
 {
@@ -40,6 +44,8 @@ static int imu_settings_set(const char *name, size_t len,
 		read_cb(cb_arg, mag_cal, sizeof(mag_cal));
 	} else if (strcmp(name, "gyro_offsets") == 0 && len == sizeof(gyro_cal)) {
 		read_cb(cb_arg, gyro_cal, sizeof(gyro_cal));
+	} else if (strcmp(name, "accel_scale") == 0 && len == sizeof(accel_scale)) {
+		read_cb(cb_arg, &accel_scale, sizeof(accel_scale));
 	}
 	return 0;
 }
@@ -88,7 +94,11 @@ int imu_get_data(struct imu_data *d)
 	sensor_channel_get(imu, SENSOR_CHAN_DIE_TEMP,  &t);
 	apply_mag_cal(m);
 	for (int i = 0; i < 3; i++) {
-		d->accel[i] = (int16_t)(a[i].val1 * 1000 + a[i].val2 / 1000);
+		int16_t raw_a = (int16_t)(a[i].val1 * 1000 + a[i].val2 / 1000);
+
+		d->accel[i] = accel_scale
+			? (int16_t)((int32_t)raw_a * accel_scale / 1000)
+			: raw_a;
 		d->gyro[i]  = (int16_t)(g[i].val1 * 1000 + g[i].val2 / 1000) - gyro_cal[i];
 		d->magn[i]  = (int16_t)(m[i].val1 * 1000 + m[i].val2 / 1000);
 	}
@@ -319,6 +329,93 @@ static int cmd_imu_cal_gyro_reset(const struct shell *sh, size_t argc, char **ar
 	return 0;
 }
 
+static uint32_t isqrt(uint64_t n)
+{
+	if (n == 0) {
+		return 0;
+	}
+	uint64_t x = n, y = (x + 1) / 2;
+
+	while (y < x) {
+		x = y;
+		y = (x + n / x) / 2;
+	}
+	return (uint32_t)x;
+}
+
+static int cmd_imu_cal_accel(const struct shell *sh, size_t argc, char **argv)
+{
+	struct sensor_value a[3];
+	int64_t sum[3] = {0};
+	int count = 0;
+
+	shell_print(sh, "Keep robot still on flat floor for %d seconds...",
+		    CAL_ACCEL_DURATION_MS / 1000);
+
+	int64_t end = k_uptime_get() + CAL_ACCEL_DURATION_MS;
+
+	while (k_uptime_get() < end) {
+		if (sensor_sample_fetch(imu) == 0 &&
+		    sensor_channel_get(imu, SENSOR_CHAN_ACCEL_XYZ, a) == 0) {
+			for (int i = 0; i < 3; i++) {
+				sum[i] += a[i].val1 * 1000 + a[i].val2 / 1000;
+			}
+			count++;
+		}
+		k_msleep(CAL_SAMPLE_MS);
+	}
+
+	if (count == 0) {
+		shell_error(sh, "no samples collected");
+		return -EIO;
+	}
+
+	int64_t ax = sum[0] / count, ay = sum[1] / count, az = sum[2] / count;
+	uint32_t mag = isqrt((uint64_t)(ax * ax + ay * ay + az * az));
+
+	if (mag < 1000) {
+		shell_error(sh, "magnitude too small (%u milli-m/s²)", mag);
+		return -EINVAL;
+	}
+
+	accel_scale = (int16_t)(9807u * 1000u / mag);
+
+	int ret = settings_save_one("imu/accel_scale", &accel_scale, sizeof(accel_scale));
+
+	if (ret) {
+		shell_error(sh, "settings save failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "done.  |a|=%u milli-m/s²  scale=%d.%03d",
+		    mag, accel_scale / 1000, accel_scale % 1000);
+	return 0;
+}
+
+static int cmd_imu_cal_accel_show(const struct shell *sh, size_t argc, char **argv)
+{
+	if (accel_scale == 0) {
+		shell_print(sh, "not calibrated");
+		return 0;
+	}
+	shell_print(sh, "scale  %d.%03d", accel_scale / 1000, accel_scale % 1000);
+	return 0;
+}
+
+static int cmd_imu_cal_accel_reset(const struct shell *sh, size_t argc, char **argv)
+{
+	accel_scale = 0;
+	settings_delete("imu/accel_scale");
+	shell_print(sh, "accel calibration cleared");
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal_accel,
+	SHELL_CMD(show,  NULL, "Print accel scale factor", cmd_imu_cal_accel_show),
+	SHELL_CMD(reset, NULL, "Clear accel calibration", cmd_imu_cal_accel_reset),
+	SHELL_SUBCMD_SET_END
+);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal_mag,
 	SHELL_CMD(show,  NULL, "Print magnetometer offsets", cmd_imu_cal_show),
 	SHELL_CMD(reset, NULL, "Clear magnetometer calibration", cmd_imu_cal_reset),
@@ -332,8 +429,9 @@ SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal_gyro,
 );
 
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal,
-	SHELL_CMD(mag,  &sub_imu_cal_mag,  "Magnetometer hard-iron calibration", cmd_imu_cal_start),
-	SHELL_CMD(gyro, &sub_imu_cal_gyro, "Gyro zero-rate bias calibration",    cmd_imu_cal_gyro),
+	SHELL_CMD(accel, &sub_imu_cal_accel, "Accel scale calibration",          cmd_imu_cal_accel),
+	SHELL_CMD(mag,   &sub_imu_cal_mag,   "Magnetometer hard-iron calibration", cmd_imu_cal_start),
+	SHELL_CMD(gyro,  &sub_imu_cal_gyro,  "Gyro zero-rate bias calibration",  cmd_imu_cal_gyro),
 	SHELL_SUBCMD_SET_END
 );
 
