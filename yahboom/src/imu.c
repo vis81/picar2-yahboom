@@ -20,25 +20,31 @@ LOG_MODULE_REGISTER(imu, LOG_LEVEL_DBG);
 #define MPU9250_REG_PWR_MGMT_1 0x6B
 #define MPU9250_PWR_SLEEP    BIT(6)
 
-#define CAL_DURATION_MS  15000
-#define CAL_SAMPLE_MS    50
+#define CAL_DURATION_MS       15000
+#define CAL_GYRO_DURATION_MS   5000
+#define CAL_SAMPLE_MS            50
 
 static const struct device *imu     = DEVICE_DT_GET(DT_NODELABEL(mpu9250));
 static const struct device *i2c_bus = DEVICE_DT_GET(DT_NODELABEL(i2c3));
 
-/* Hard-iron offsets in sensor_value micro-units (µT × 1e6); zero = uncalibrated */
+/* Hard-iron offsets in sensor_value micro-units (G × 1e6); zero = uncalibrated */
 static int64_t mag_cal[3];
 
-static int mag_cal_set(const char *name, size_t len,
-		       settings_read_cb read_cb, void *cb_arg)
+/* Gyro zero-rate bias in ×0.001 rad/s; zero = uncalibrated */
+static int16_t gyro_cal[3];
+
+static int imu_settings_set(const char *name, size_t len,
+			    settings_read_cb read_cb, void *cb_arg)
 {
 	if (strcmp(name, "offsets") == 0 && len == sizeof(mag_cal)) {
 		read_cb(cb_arg, mag_cal, sizeof(mag_cal));
+	} else if (strcmp(name, "gyro_offsets") == 0 && len == sizeof(gyro_cal)) {
+		read_cb(cb_arg, gyro_cal, sizeof(gyro_cal));
 	}
 	return 0;
 }
 
-SETTINGS_STATIC_HANDLER_DEFINE(imu, "imu", NULL, mag_cal_set, NULL, NULL);
+SETTINGS_STATIC_HANDLER_DEFINE(imu, "imu", NULL, imu_settings_set, NULL, NULL);
 
 static void apply_mag_cal(struct sensor_value *m)
 {
@@ -83,7 +89,7 @@ int imu_get_data(struct imu_data *d)
 	apply_mag_cal(m);
 	for (int i = 0; i < 3; i++) {
 		d->accel[i] = (int16_t)(a[i].val1 * 1000 + a[i].val2 / 1000);
-		d->gyro[i]  = (int16_t)(g[i].val1 * 1000 + g[i].val2 / 1000);
+		d->gyro[i]  = (int16_t)(g[i].val1 * 1000 + g[i].val2 / 1000) - gyro_cal[i];
 		d->magn[i]  = (int16_t)(m[i].val1 * 1000 + m[i].val2 / 1000);
 	}
 	d->temp = (int16_t)(t.val1 * 100 + t.val2 / 10000);
@@ -247,10 +253,83 @@ static int cmd_imu_cal_reset(const struct shell *sh, size_t argc, char **argv)
 	return 0;
 }
 
+static int cmd_imu_cal_gyro(const struct shell *sh, size_t argc, char **argv)
+{
+	struct sensor_value g[3];
+	int64_t sum[3] = {0};
+	int count = 0;
+
+	shell_print(sh, "Keep robot stationary for %d seconds...",
+		    CAL_GYRO_DURATION_MS / 1000);
+
+	int64_t end = k_uptime_get() + CAL_GYRO_DURATION_MS;
+
+	while (k_uptime_get() < end) {
+		if (sensor_sample_fetch(imu) == 0 &&
+		    sensor_channel_get(imu, SENSOR_CHAN_GYRO_XYZ, g) == 0) {
+			for (int i = 0; i < 3; i++) {
+				sum[i] += g[i].val1 * 1000 + g[i].val2 / 1000;
+			}
+			count++;
+		}
+		k_msleep(CAL_SAMPLE_MS);
+	}
+
+	if (count == 0) {
+		shell_error(sh, "no samples collected");
+		return -EIO;
+	}
+
+	for (int i = 0; i < 3; i++) {
+		gyro_cal[i] = (int16_t)(sum[i] / count);
+	}
+
+	int ret = settings_save_one("imu/gyro_offsets", gyro_cal, sizeof(gyro_cal));
+
+	if (ret) {
+		shell_error(sh, "settings save failed: %d", ret);
+		return ret;
+	}
+
+	shell_print(sh, "done.  bias  x: %s%d.%03d  y: %s%d.%03d  z: %s%d.%03d rad/s",
+		gyro_cal[0] < 0 ? "-" : "", abs(gyro_cal[0]) / 1000, abs(gyro_cal[0]) % 1000,
+		gyro_cal[1] < 0 ? "-" : "", abs(gyro_cal[1]) / 1000, abs(gyro_cal[1]) % 1000,
+		gyro_cal[2] < 0 ? "-" : "", abs(gyro_cal[2]) / 1000, abs(gyro_cal[2]) % 1000);
+	return 0;
+}
+
+static int cmd_imu_cal_gyro_show(const struct shell *sh, size_t argc, char **argv)
+{
+	if (gyro_cal[0] == 0 && gyro_cal[1] == 0 && gyro_cal[2] == 0) {
+		shell_print(sh, "not calibrated");
+		return 0;
+	}
+	shell_print(sh, "bias  x: %s%d.%03d  y: %s%d.%03d  z: %s%d.%03d rad/s",
+		gyro_cal[0] < 0 ? "-" : "", abs(gyro_cal[0]) / 1000, abs(gyro_cal[0]) % 1000,
+		gyro_cal[1] < 0 ? "-" : "", abs(gyro_cal[1]) / 1000, abs(gyro_cal[1]) % 1000,
+		gyro_cal[2] < 0 ? "-" : "", abs(gyro_cal[2]) / 1000, abs(gyro_cal[2]) % 1000);
+	return 0;
+}
+
+static int cmd_imu_cal_gyro_reset(const struct shell *sh, size_t argc, char **argv)
+{
+	gyro_cal[0] = gyro_cal[1] = gyro_cal[2] = 0;
+	settings_delete("imu/gyro_offsets");
+	shell_print(sh, "gyro calibration cleared");
+	return 0;
+}
+
+SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal_gyro,
+	SHELL_CMD(show,  NULL, "Print gyro bias", cmd_imu_cal_gyro_show),
+	SHELL_CMD(reset, NULL, "Clear gyro calibration", cmd_imu_cal_gyro_reset),
+	SHELL_SUBCMD_SET_END
+);
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_imu_cal,
 	SHELL_CMD(start, NULL, "Collect hard-iron offsets (rotate board for 15 s)", cmd_imu_cal_start),
-	SHELL_CMD(show,  NULL, "Print current offsets", cmd_imu_cal_show),
-	SHELL_CMD(reset, NULL, "Clear calibration", cmd_imu_cal_reset),
+	SHELL_CMD(show,  NULL, "Print magnetometer offsets", cmd_imu_cal_show),
+	SHELL_CMD(reset, NULL, "Clear magnetometer calibration", cmd_imu_cal_reset),
+	SHELL_CMD(gyro,  &sub_imu_cal_gyro, "Gyro zero-rate bias calibration", cmd_imu_cal_gyro),
 	SHELL_SUBCMD_SET_END
 );
 
