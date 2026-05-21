@@ -35,6 +35,11 @@
 #define MODE_MANUAL		0
 #define MODE_AUTO 		1
 
+/* Speed limit when RC override switch is ON: 0.5 m/s
+ * wheel_radius = 0.033 m → 0.5 / 0.033 × (180/π) ≈ 868 deg/s */
+#define RC_OVERRIDE_MAX_VEL  868
+#define RC_OVERRIDE_MAX_THR  50
+
 // Simple functions for mapping a value betwen [0, 100] to the
 // range [min, max] and vice versa.
 #define MAP(value, min, max) ((value) * ((max) - (min))/100 + (min))
@@ -47,7 +52,7 @@ static const struct device *receiver = DEVICE_DT_GET(RC_IN);
 
 static int rc_debug = 0;
 static int rc_enable = 1;
-static int rc_mode = MODE_MANUAL;
+static int rc_mode = MODE_AUTO;
 static bool rc_override = false;  /* true = RC takes precedence over serial */
 
 void rc_set_enable(int en)
@@ -102,7 +107,7 @@ static void callback(struct input_event *evt) {
 		rc_override = evt->value ? true : false;
 		break;
 	case INPUT_BTN_MODE:
-		rc_mode = evt->value ? MODE_AUTO : MODE_MANUAL;
+		rc_mode = evt->value ? MODE_MANUAL : MODE_AUTO;
 		break;
 	}
 	if (!evt->sync)
@@ -122,12 +127,19 @@ static void callback(struct input_event *evt) {
 		if (ret < 0) {
 			printk("Error %d: failed to set pulse width\n", ret);
 		}
+		int32_t  v   = vel;
+		uint32_t thr = throttle;
+		if (rc_override) {
+			if (v >  RC_OVERRIDE_MAX_VEL) v =  RC_OVERRIDE_MAX_VEL;
+			if (v < -RC_OVERRIDE_MAX_VEL) v = -RC_OVERRIDE_MAX_VEL;
+			if (thr > RC_OVERRIDE_MAX_THR) thr = RC_OVERRIDE_MAX_THR;
+		}
 		if (rc_mode == MODE_MANUAL || dir == DIR_BREAK) {
-			motor_throttle(MOTOR_R, dir, throttle);
-			motor_throttle(MOTOR_L, dir, throttle);
+			motor_throttle(MOTOR_R, dir, thr);
+			motor_throttle(MOTOR_L, dir, thr);
 		} else {
-			motor_speed(MOTOR_R, vel);
-			motor_speed(MOTOR_L, vel);
+			motor_speed(MOTOR_R, v);
+			motor_speed(MOTOR_L, v);
 		}
 	}
 };
