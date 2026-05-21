@@ -13,6 +13,7 @@
 #define MSG_GET_STATS 0x83
 #define MSG_TIMESYNC  0x84
 #define MSG_PID_SET        0x85
+#define MSG_SERVO_CENTER   0x86
 
 void comms_init(void);
 

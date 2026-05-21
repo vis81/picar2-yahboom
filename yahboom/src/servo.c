@@ -119,6 +119,27 @@ int servo_get(int16_t *tenths_deg)
 	return 0;
 }
 
+int servo_set_center(int id, uint16_t us)
+{
+	if (id < 0 || id >= NUM_SERVOS)
+		return -EINVAL;
+	if (us < servo_min_us[id] || us > servo_max_us[id])
+		return -EINVAL;
+	center_us[id] = us;
+	char key[32];
+	snprintf(key, sizeof(key), "servo/center_%d", id);
+	settings_save_one(key, &center_us[id], sizeof(center_us[id]));
+	return servo_write_id(id, us);
+}
+
+int servo_get_center(int id, uint16_t *us)
+{
+	if (id < 0 || id >= NUM_SERVOS)
+		return -EINVAL;
+	*us = center_us[id];
+	return 0;
+}
+
 #ifdef CONFIG_SHELL
 
 static int cmd_servo_pulse(const struct shell *sh, size_t argc, char **argv)
@@ -175,10 +196,10 @@ static int cmd_servo_center(const struct shell *sh, size_t argc, char **argv)
 
 	/* servo center <id> reset    — restore default */
 	if (strcmp(argv[2], "reset") == 0) {
-		center_us[id] = servo_init_us[id];
 		char key[32];
 		snprintf(key, sizeof(key), "servo/center_%u", id);
 		settings_delete(key);
+		center_us[id] = servo_init_us[id];
 		servo_write_id(id, center_us[id]);
 		shell_print(sh, "servo %u: center reset to %u us", id, center_us[id]);
 		return 0;
@@ -186,17 +207,16 @@ static int cmd_servo_center(const struct shell *sh, size_t argc, char **argv)
 
 	/* servo center <id> <us>     — set and save */
 	uint32_t us;
-	if (sscanf(argv[2], "%u", &us) != 1 ||
-	    us < servo_min_us[id] || us > servo_max_us[id]) {
-		shell_error(sh, "servo %u: center must be %u–%u µs",
-			    id, servo_min_us[id], servo_max_us[id]);
+	if (sscanf(argv[2], "%u", &us) != 1) {
+		shell_help(sh);
 		return -EINVAL;
 	}
-	center_us[id] = (uint16_t)us;
-	char key[32];
-	snprintf(key, sizeof(key), "servo/center_%u", id);
-	settings_save_one(key, &center_us[id], sizeof(center_us[id]));
-	servo_write_id(id, center_us[id]);
+	int ret = servo_set_center(id, (uint16_t)us);
+	if (ret) {
+		shell_error(sh, "servo %u: center must be %u–%u µs",
+			    id, servo_min_us[id], servo_max_us[id]);
+		return ret;
+	}
 	shell_print(sh, "servo %u: center set to %u us (saved)", id, us);
 	return 0;
 }

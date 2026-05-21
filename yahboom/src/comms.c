@@ -332,6 +332,13 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		break;
 	}
 
+	case MSG_SERVO_CENTER: {
+		/* [0] servo_id  [1:2] center_us LE */
+		if (len < 3) { rx_short++; break; }
+		servo_set_center(payload[0], sys_get_le16(&payload[1]));
+		break;
+	}
+
 	case MSG_GET_STATS:
 		if (len >= 1 && payload[0]) {
 			proto_clear_stats();
