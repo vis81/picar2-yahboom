@@ -7,7 +7,7 @@ Usage:
 
 Controls:
     Left / Right sliders : wheel velocity in mm/s (-3000 … +3000)
-    Steer slider         : steering angle in tenths of degrees (-900 … +900; 0 = center)
+    Steer slider         : steering pulse delta from center in µs (-600 … +600; 0 = center)
     CMD_VEL rate         : how often the current slider values are sent
     Stream rate dropdowns: ask the STM32 to push data at that Hz
     Double-click a motor slider to zero it.
@@ -71,7 +71,7 @@ def _frame(msg_type: int, payload: bytes = b"") -> bytes:
     return hdr + payload + bytes([crc8(bytes([msg_type, len(payload)]) + payload)])
 
 def enc_cmd_vel(left_mms: int, right_mms: int, steering: int = 0) -> bytes:
-    """steering in tenths of degrees: 0 = center, +900 = 90° CW, -900 = 90° CCW"""
+    """steering: signed µs delta from center (0 = neutral); firmware clamps to servo limits"""
     return _frame(MSG_CMD_VEL, struct.pack("<hhh", left_mms, right_mms, steering))
 
 def enc_req(stream_id: int) -> bytes:
@@ -383,7 +383,7 @@ class App(tk.Tk):
 
         self._make_slider(ctrl, "Left (mm/s)",  self._left_var,  -3000, 3000, row=0)
         self._make_slider(ctrl, "Right (mm/s)", self._right_var, -3000, 3000, row=1)
-        self._make_slider(ctrl, "Steer (°×10)", self._steer_var,  -900,  900, row=2)
+        self._make_slider(ctrl, "Steer (µs)",   self._steer_var,  -600,  600, row=2)
 
         ttk.Separator(ctrl, orient="horizontal").grid(
             row=3, column=0, columnspan=3, sticky="ew", pady=(6, 4))
@@ -704,7 +704,7 @@ class App(tk.Tk):
         if sid == TYPE_JOINT:
             txt = (
                 f"enc_l={data['enc_left']:+10d}   enc_r={data['enc_right']:+10d}\n"
-                f"steer={data['steering']/10:+5.1f}°   seq={data['seq']}"
+                f"steer={data['steering']:+d} µs   seq={data['seq']}"
             )
             if "vel_left" in data:
                 txt += (

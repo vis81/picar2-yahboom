@@ -58,7 +58,7 @@ def frame(msg_type: int, payload: bytes = b"") -> bytes:
     return hdr + payload + bytes([crc8(bytes([msg_type, len(payload)]) + payload)])
 
 def cmd_vel(left_mms: int, right_mms: int, steering: int = 0) -> bytes:
-    """steering in tenths of degrees: 0 = center, +900 = 90° CW, -900 = 90° CCW"""
+    """steering: signed µs delta from center (0 = neutral); firmware clamps to servo limits"""
     return frame(MSG_CMD_VEL, struct.pack("<hhh", left_mms, right_mms, steering))
 
 def req(stream_id: int) -> bytes:
@@ -404,7 +404,7 @@ def test_cmd_vel_motors(ser: serial.Serial, rx: Receiver):
     else:
         print(f"  {INFO} (skipping encoder-advance check — too few JOINT frames)")
 
-    steer_stop, steer_bg = send_cmd_vel_background(ser, left=0, right=0, steer=180)
+    steer_stop, steer_bg = send_cmd_vel_background(ser, left=0, right=0, steer=200)
     time.sleep(0.15)
     steer_stop.set()
     steer_bg.join(timeout=0.2)
@@ -413,7 +413,7 @@ def test_cmd_vel_motors(ser: serial.Serial, rx: Receiver):
     f = rx.recv_type(TYPE_JOINT, timeout=0.5)
     if f and f[2]:
         check("Steering echoed correctly in JOINT_STATE",
-              f[2]["steering"] == 180, f"got {f[2]['steering']}")
+              f[2]["steering"] == 200, f"got {f[2]['steering']}")
 
     stop_all_streams(ser)
     halt_motors(ser)

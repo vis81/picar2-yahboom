@@ -71,9 +71,13 @@ static void callback(struct input_event *evt) {
 	static bool brake = false;
 
 	switch (evt->code) {
-	case INPUT_ABS_RUDDER:
-		pulse_width = (int32_t)PAM2(evt->value, 0xF0, 0x720, -900, 900);
+	case INPUT_ABS_RUDDER: {
+		int16_t steer_neg, steer_pos;
+		servo_steer_delta_range(0, &steer_neg, &steer_pos);
+		pulse_width = (int32_t)PAM2(evt->value, 0xF0, 0x720,
+					    (float)steer_neg, (float)steer_pos);
 		break;
+	}
 	case INPUT_ABS_GAS:
 		int32_t c1 = evt->value - 0x3e8;
 		throttle = PAM(abs(c1), 0, 0x720/2);

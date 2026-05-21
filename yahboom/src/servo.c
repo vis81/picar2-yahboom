@@ -99,23 +99,28 @@ void servo_neutral_all(void)
 		servo_write_id(i, center_us[i]);
 }
 
-/* tenths of degrees → µs for servo0 */
-int servo_steer(int16_t tenths_deg)
+/* signed µs delta from center → servo0 */
+int servo_steer(int16_t delta_us)
 {
-	int32_t half_range = (servo_max_us[0] - servo_min_us[0]) / 2;
-	int32_t us = (int32_t)center_us[0] +
-	             (int32_t)tenths_deg * half_range / 900;
+	int32_t us = (int32_t)center_us[0] + (int32_t)delta_us;
 	return servo_write_id(0, (uint16_t)CLAMP(us,
 	                          (int32_t)servo_min_us[0],
 	                          (int32_t)servo_max_us[0]));
 }
 
-/* µs → tenths of degrees for servo0 */
-int servo_get(int16_t *tenths_deg)
+/* servo0 → signed µs delta from center */
+int servo_get(int16_t *delta_us)
 {
-	int32_t half_range = (servo_max_us[0] - servo_min_us[0]) / 2;
-	int32_t offset = (int32_t)current_us[0] - (int32_t)center_us[0];
-	*tenths_deg = (int16_t)(offset * 900 / half_range);
+	*delta_us = (int16_t)((int32_t)current_us[0] - (int32_t)center_us[0]);
+	return 0;
+}
+
+int servo_steer_delta_range(int id, int16_t *neg_limit, int16_t *pos_limit)
+{
+	if (id < 0 || id >= NUM_SERVOS)
+		return -EINVAL;
+	*neg_limit = (int16_t)((int32_t)servo_min_us[id] - (int32_t)center_us[id]);
+	*pos_limit = (int16_t)((int32_t)servo_max_us[id] - (int32_t)center_us[id]);
 	return 0;
 }
 

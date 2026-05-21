@@ -75,12 +75,12 @@ def recv_frame(ser: serial.Serial, timeout: float = 0.5):
 
 
 def read_joint_frame(ser: serial.Serial):
-    """Request a JOINT frame and decode steer position (tenths of degrees)."""
+    """Request a JOINT frame and decode steer position (µs delta from center)."""
     ser.write(frame(MSG_REQ, bytes([STREAM_JOINT])))
     result = recv_frame(ser, timeout=0.5)
     if result and result[0] == STREAM_JOINT and len(result[1]) >= 10:
-        steer_tenths = struct.unpack_from('<h', result[1], 8)[0]
-        return steer_tenths / 10.0
+        delta_us = struct.unpack_from('<h', result[1], 8)[0]
+        return delta_us
     return None
 
 
@@ -103,21 +103,21 @@ def main():
         sys.exit(f'Cannot open {args.port}: {e}')
 
     if args.servo_id is None:
-        # Show mode: request current steer angle (servo 0 only for now)
-        angle = read_joint_frame(ser)
-        if angle is not None:
-            print(f'servo 0 current angle: {angle:+.1f}°  (use servo_id center_us to set center)')
+        # Show mode: request current steer offset (servo 0 only for now)
+        delta = read_joint_frame(ser)
+        if delta is not None:
+            print(f'servo 0 current offset: {delta:+d} µs from center  (use servo_id center_us to set center)')
         else:
             print('No response — is bringup running?')
     else:
         ser.write(encode_servo_center(args.servo_id, args.center_us))
         ser.flush()
         print(f'servo {args.servo_id}: center set to {args.center_us} µs')
-        # Verify by reading back steer angle (should be ~0 for servo 0)
+        # Verify by reading back steer offset (should be ~0 for servo 0)
         if args.servo_id == 0:
-            angle = read_joint_frame(ser)
-            if angle is not None:
-                print(f'servo 0 angle after centering: {angle:+.1f}°')
+            delta = read_joint_frame(ser)
+            if delta is not None:
+                print(f'servo 0 offset after centering: {delta:+d} µs')
 
     ser.close()
 

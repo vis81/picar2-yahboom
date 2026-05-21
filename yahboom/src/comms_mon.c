@@ -78,7 +78,7 @@ void comms_mon_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 	switch (type) {
 	case MSG_CMD_VEL:
 		if (len >= 6) {
-			shell_print(sh, "[%8lld] CMD_VEL  l=%-6d r=%-6d steer=%d",
+			shell_print(sh, "[%8lld] CMD_VEL  l=%-6d r=%-6d steer_us=%d",
 				(long long)ms,
 				(int)(int16_t)sys_get_le16(&payload[0]),
 				(int)(int16_t)sys_get_le16(&payload[2]),

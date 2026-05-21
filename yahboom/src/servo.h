@@ -9,9 +9,11 @@
 #include <stdint.h>
 
 int  servo_init(void);
-/* steer in tenths of degrees: 0 = center, +900 = 90° CW, -900 = 90° CCW */
-int  servo_steer(int16_t tenths_deg);
-int  servo_get(int16_t *tenths_deg);
+/* steer as signed µs delta from center: 0 = neutral, positive = CW */
+int  servo_steer(int16_t delta_us);
+int  servo_get(int16_t *delta_us);
+/* Returns the valid delta range for servo id: neg_limit ≤ 0, pos_limit ≥ 0 */
+int  servo_steer_delta_range(int id, int16_t *neg_limit, int16_t *pos_limit);
 void servo_neutral_all(void);
 /* center calibration — saved to settings, survives reboot */
 int  servo_set_center(int id, uint16_t us);

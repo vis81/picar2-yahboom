@@ -57,7 +57,7 @@ def frame(msg_type: int, payload: bytes = b"") -> bytes:
     return hdr + payload + bytes([crc8(bytes([msg_type, len(payload)]) + payload)])
 
 def cmd_vel(left: int, right: int, steering: int = 0) -> bytes:
-    """steering in tenths of degrees: 0 = center, +900 = 90° CW"""
+    """steering: signed µs delta from center (0 = neutral); firmware clamps to servo limits"""
     return frame(MSG_CMD_VEL, struct.pack("<hhh", left, right, steering))
 
 def set_rate(stream_id: int, hz: int) -> bytes:
@@ -70,10 +70,10 @@ def encode_pid_set(motor_id: int, kp: float, ki: float, kd: float) -> bytes:
 # ── Frame decoding ───────────────────────────────────────────────────────────
 
 def decode_joint(payload: bytes) -> dict:
-    enc_l, enc_r, steer, seq = struct.unpack("<iiBB", payload[:10])
+    enc_l, enc_r, steer, seq = struct.unpack("<iihB", payload[:11])
     d = {"enc_left": enc_l, "enc_right": enc_r, "steering": steer, "seq": seq}
-    if len(payload) >= 14:
-        vel_l, vel_r = struct.unpack_from("<hh", payload, 10)
+    if len(payload) >= 15:
+        vel_l, vel_r = struct.unpack_from("<hh", payload, 11)
         d["vel_left"] = vel_l
         d["vel_right"] = vel_r
     return d
