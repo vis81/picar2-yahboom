@@ -260,9 +260,11 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		}
 		cmd_vel_L = (int32_t)(int16_t)sys_get_le16(&payload[0]);
 		cmd_vel_R = (int32_t)(int16_t)sys_get_le16(&payload[2]);
-		motor_speed(MOTOR_L, cmd_vel_L);
-		motor_speed(MOTOR_R, cmd_vel_R);
-		servo_steer((int16_t)sys_get_le16(&payload[4]));
+		if (!rc_get_override()) {
+			motor_speed(MOTOR_L, cmd_vel_L);
+			motor_speed(MOTOR_R, cmd_vel_R);
+			servo_steer((int16_t)sys_get_le16(&payload[4]));
+		}
 		break;
 
 	case MSG_REQ:

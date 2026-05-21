@@ -48,10 +48,16 @@ static const struct device *receiver = DEVICE_DT_GET(RC_IN);
 static int rc_debug = 0;
 static int rc_enable = 1;
 static int rc_mode = MODE_MANUAL;
+static bool rc_override = false;  /* true = RC takes precedence over serial */
 
 void rc_set_enable(int en)
 {
 	rc_enable = en;
+}
+
+bool rc_get_override(void)
+{
+	return rc_override;
 }
 
 int rc_init() {
@@ -92,6 +98,9 @@ static void callback(struct input_event *evt) {
 	case INPUT_ABS_BRAKE:
 		brake = evt->value > 300;
 		break;
+	case INPUT_BTN_SELECT:
+		rc_override = evt->value ? true : false;
+		break;
 	case INPUT_BTN_MODE:
 		rc_mode = evt->value ? MODE_AUTO : MODE_MANUAL;
 		break;
@@ -108,7 +117,7 @@ static void callback(struct input_event *evt) {
 	if (rc_debug) {
 		printk("pw %u d %u thr %u vel %d brk %u mode %u\n", pulse_width, dir, throttle, vel, brake, rc_mode);
 	}
-	if (rc_enable) {
+	if (rc_enable || rc_override) {
 		ret = servo_steer((int16_t)pulse_width);
 		if (ret < 0) {
 			printk("Error %d: failed to set pulse width\n", ret);

@@ -186,6 +186,11 @@
 			type = <INPUT_EV_ABS>;
 			zephyr,code = <INPUT_ABS_BRAKE>;
 		};
+		ch_5 {
+			channel = <5>;
+			type = <INPUT_EV_KEY>;
+			zephyr,code = <INPUT_BTN_SELECT>;  /* RC override switch */
+		};
 		ch_6 {
 			channel = <6>;
 			type = <INPUT_EV_KEY>;

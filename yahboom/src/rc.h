@@ -8,5 +8,6 @@
 
 int rc_init();
 void rc_set_enable(int en);
+bool rc_get_override(void);
 
 #endif
