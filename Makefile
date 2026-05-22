@@ -12,7 +12,7 @@ MCUMGR      = ~/go/bin/mcumgr
         clean distclean \
         mcuboot app-signed \
         flash flash-app-signed flash-mcuboot flash-app-signed-mcumgr \
-        check-env
+        check-env install-uarts
 
 TIMESYNC_SRC = tests/integration/timesync_test.cpp
 TIMESYNC_BIN = tests/integration/timesync_test
@@ -67,6 +67,17 @@ check-env:
 		echo ""; \
 		exit 1; \
 	fi
+
+# ── host setup ───────────────────────────────────────────────────────────────
+
+install-uarts:
+	apt-get install -y socat
+	cp etc/99-usb-serial.rules /etc/udev/rules.d/
+	udevadm control --reload-rules && udevadm trigger
+	cp etc/zephyr-shell.service /etc/systemd/system/
+	systemctl daemon-reload
+	systemctl enable --now zephyr-shell
+	@echo "Done — unplug and replug USB adapters, then connect via: putty -raw <pi-ip> 4444"
 
 # ── build targets ─────────────────────────────────────────────────────────────
 
