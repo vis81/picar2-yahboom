@@ -6,7 +6,6 @@
 
 #include <stdlib.h>
 #include <zephyr/kernel.h>
-#include <zephyr/drivers/uart.h>
 #include <zephyr/sys/byteorder.h>
 #include <zephyr/shell/shell.h>
 #include "protocol.h"
@@ -83,12 +82,10 @@ static K_WORK_DELAYABLE_DEFINE(watchdog_work, on_timeout);
 
 static void send_frame(uint8_t type, const uint8_t *payload, uint8_t len)
 {
-	uint8_t frame[3 + PROTO_MAX_LEN + 1];
+	uint8_t frame[4 + PROTO_MAX_LEN];
 	int n = proto_encode(type, payload, len, frame);
 
-	for (int i = 0; i < n; i++) {
-		uart_poll_out(pi_uart, frame[i]);
-	}
+	proto_tx(frame, n);
 	if (type < STREAM_MAX) {
 		tx_frames[type]++;
 	}

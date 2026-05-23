@@ -27,6 +27,7 @@ struct proto_stats {
 };
 
 void proto_init(const struct device *uart, proto_rx_cb_t cb);
+void proto_tx(const uint8_t *buf, size_t len);
 int  proto_encode(uint8_t type, const uint8_t *payload, uint8_t len, uint8_t *out);
 void proto_get_stats(struct proto_stats *out);
 void proto_clear_stats(void);

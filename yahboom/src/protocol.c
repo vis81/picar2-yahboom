@@ -32,6 +32,10 @@ static uint8_t dma_rx_buf[2][DMA_BUF_SIZE];
 static uint8_t dma_buf_idx;
 static bool rx_paused;
 
+#define TX_BUF_SIZE (4 + PROTO_MAX_LEN)
+static uint8_t tx_dma_buf[TX_BUF_SIZE];
+static K_SEM_DEFINE(tx_sem, 1, 1);
+
 static uint8_t crc8(const uint8_t *buf, size_t len)
 {
 	uint8_t crc = 0;
@@ -145,6 +149,10 @@ static void uart_async_cb(const struct device *dev, struct uart_event *evt,
 				       RX_IDLE_TIMEOUT_US);
 		}
 		break;
+	case UART_TX_DONE:
+	case UART_TX_ABORTED:
+		k_sem_give(&tx_sem);
+		break;
 	default:
 		break;
 	}
@@ -194,6 +202,15 @@ int proto_set_baud(uint32_t baud)
 	dma_buf_idx = 0;
 	return uart_rx_enable(proto_uart, dma_rx_buf[0], DMA_BUF_SIZE,
 			      RX_IDLE_TIMEOUT_US);
+}
+
+void proto_tx(const uint8_t *buf, size_t len)
+{
+	k_sem_take(&tx_sem, K_FOREVER);
+	memcpy(tx_dma_buf, buf, len);
+	if (uart_tx(proto_uart, tx_dma_buf, len, SYS_FOREVER_US) != 0) {
+		k_sem_give(&tx_sem);
+	}
 }
 
 void proto_init(const struct device *uart, proto_rx_cb_t cb)
