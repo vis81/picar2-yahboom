@@ -130,12 +130,16 @@ static void uart_async_cb(const struct device *dev, struct uart_event *evt,
 			  void *user_data)
 {
 	switch (evt->type) {
-	case UART_RX_RDY:
-		ring_buf_put(&rx_ring,
-			     evt->data.rx.buf + evt->data.rx.offset,
-			     evt->data.rx.len);
+	case UART_RX_RDY: {
+		uint32_t put = ring_buf_put(&rx_ring,
+					    evt->data.rx.buf + evt->data.rx.offset,
+					    evt->data.rx.len);
+		if (put < evt->data.rx.len) {
+			stats.rx_drop += evt->data.rx.len - put;
+		}
 		k_work_submit(&rx_work);
 		break;
+	}
 	case UART_RX_BUF_REQUEST:
 		dma_buf_idx ^= 1;
 		uart_rx_buf_rsp(dev, dma_rx_buf[dma_buf_idx], DMA_BUF_SIZE);
@@ -144,13 +148,17 @@ static void uart_async_cb(const struct device *dev, struct uart_event *evt,
 		break;
 	case UART_RX_DISABLED:
 		if (!rx_paused) {
+			stats.rx_dma_restart++;
 			dma_buf_idx = 0;
 			uart_rx_enable(dev, dma_rx_buf[0], DMA_BUF_SIZE,
 				       RX_IDLE_TIMEOUT_US);
 		}
 		break;
 	case UART_TX_DONE:
+		k_sem_give(&tx_sem);
+		break;
 	case UART_TX_ABORTED:
+		stats.tx_abort++;
 		k_sem_give(&tx_sem);
 		break;
 	default:

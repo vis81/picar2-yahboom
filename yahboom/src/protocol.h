@@ -21,9 +21,12 @@ typedef void (*proto_err_cb_t)(uint8_t err, uint8_t msg_type, uint8_t detail);
 void proto_set_err_cb(proto_err_cb_t cb);
 
 struct proto_stats {
-	uint32_t rx_frames;   /* valid frames dispatched to callback */
-	uint32_t rx_crc_err;  /* frames dropped due to bad CRC */
-	uint32_t rx_len_err;  /* frames dropped due to length > PROTO_MAX_LEN */
+	uint32_t rx_frames;      /* valid frames dispatched to callback */
+	uint32_t rx_crc_err;     /* frames dropped due to bad CRC */
+	uint32_t rx_len_err;     /* frames dropped due to length > PROTO_MAX_LEN */
+	uint32_t rx_drop;        /* bytes lost to ring buffer overflow */
+	uint32_t rx_dma_restart; /* unplanned RX DMA restarts (data gap) */
+	uint32_t tx_abort;       /* TX DMA aborts */
 };
 
 void proto_init(const struct device *uart, proto_rx_cb_t cb);

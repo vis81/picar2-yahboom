@@ -419,13 +419,16 @@ static int cmd_comms_stats(const struct shell *sh, size_t argc, char **argv)
 		tx_total += tx_frames[i];
 	}
 
-	shell_print(sh, "rx frames   %u", ps.rx_frames);
-	shell_print(sh, "rx crc_err  %u", ps.rx_crc_err);
-	shell_print(sh, "rx len_err  %u", ps.rx_len_err);
-	shell_print(sh, "rx short    %u", rx_short);
-	shell_print(sh, "rx unknown  %u", rx_unknown);
-	shell_print(sh, "tx frames   %u", tx_total);
-	shell_print(sh, "connected   %s", connected ? "yes" : "no");
+	shell_print(sh, "rx frames       %u", ps.rx_frames);
+	shell_print(sh, "rx crc_err      %u", ps.rx_crc_err);
+	shell_print(sh, "rx len_err      %u", ps.rx_len_err);
+	shell_print(sh, "rx short        %u", rx_short);
+	shell_print(sh, "rx unknown      %u", rx_unknown);
+	shell_print(sh, "rx drop         %u", ps.rx_drop);
+	shell_print(sh, "rx dma_restart  %u", ps.rx_dma_restart);
+	shell_print(sh, "tx frames       %u", tx_total);
+	shell_print(sh, "tx abort        %u", ps.tx_abort);
+	shell_print(sh, "connected       %s", connected ? "yes" : "no");
 	return 0;
 }
 
