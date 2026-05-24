@@ -90,7 +90,10 @@ int imu_get_data(struct imu_data *d)
 	}
 	sensor_channel_get(imu, SENSOR_CHAN_ACCEL_XYZ, a);
 	sensor_channel_get(imu, SENSOR_CHAN_GYRO_XYZ,  g);
-	sensor_channel_get(imu, SENSOR_CHAN_MAGN_XYZ,  m);
+	if (sensor_channel_get(imu, SENSOR_CHAN_MAGN_XYZ, m) != 0) {
+		/* HOFL overflow or I2C error — zero out so we don't transmit stack garbage */
+		memset(m, 0, sizeof(m));
+	}
 	sensor_channel_get(imu, SENSOR_CHAN_DIE_TEMP,  &t);
 	apply_mag_cal(m);
 	for (int i = 0; i < 3; i++) {
