@@ -26,7 +26,7 @@ static void rx_work_fn(struct k_work *w);
 static K_WORK_DEFINE(rx_work, rx_work_fn);
 
 #define DMA_BUF_SIZE       64
-#define RX_IDLE_TIMEOUT_US 1000
+#define RX_IDLE_TIMEOUT_US 200
 
 static uint8_t dma_rx_buf[2][DMA_BUF_SIZE];
 static uint8_t dma_buf_idx;
