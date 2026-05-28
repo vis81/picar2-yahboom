@@ -61,6 +61,26 @@
         };
 	};
 
+	/* INA219 current/power monitor port */
+	i2c4: i2c4 {
+		compatible = "gpio-i2c";
+		status = "disabled";
+		clock-frequency = <I2C_BITRATE_FAST>;
+		scl-gpios = <&gpioc 0 (GPIO_OPEN_DRAIN)>;
+		sda-gpios = <&gpioc 1 (GPIO_OPEN_DRAIN)>;
+		#address-cells = <1>;
+		#size-cells = <0>;
+
+		ina219: ina219@41 {
+			compatible = "ti,ina219";
+			reg = <0x41>;
+			status = "disabled";
+			lsb-microamp = <100>;     /* 100 µA LSB → ~3.3 A full-scale */
+			shunt-milliohm = <100>;   /* 100 mΩ shunt (standard breakout) */
+			brng = <1>;               /* 32 V bus voltage range */
+		};
+	};
+
 	aliases {
 		led0 = &green_led_1;
 		sw0 = &user_button;

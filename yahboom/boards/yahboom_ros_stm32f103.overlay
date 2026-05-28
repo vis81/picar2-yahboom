@@ -211,6 +211,14 @@
 	status = "okay";
 };
 
+/* INA219 on bit-bang I2C4 (PC0=SCL, PC1=SDA) */
+&i2c4 {
+	status = "okay";
+	ina219: ina219@41 {
+		status = "okay";
+	};
+};
+
 /* MPU9250 on bit-bang I2C3 (PB13=SCL, PB15=SDA) */
 &i2c3 {
 	status = "okay";
