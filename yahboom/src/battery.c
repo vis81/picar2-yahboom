@@ -33,7 +33,9 @@ K_WORK_DELAYABLE_DEFINE(battery_mon_work, battery_mon_func);
 
 static const struct device *ina219_dev = DEVICE_DT_GET(DT_NODELABEL(ina219));
 
-/* Reads any combination of bus voltage (mv), current (ma), power (mw).
+/* Reads any combination of battery voltage (mv), current (ma), power (mw).
+ * mv = V_bus + V_shunt = battery voltage on V+ side of shunt.
+ * V_shunt is computed as I × R_shunt (driver does not expose it as a channel).
  * Pass NULL for channels not needed. Returns 0 on success. */
 static int ina219_read(int32_t *mv, int32_t *ma, int32_t *mw)
 {
@@ -45,13 +47,23 @@ static int ina219_read(int32_t *mv, int32_t *ma, int32_t *mw)
 		return err;
 	}
 	struct sensor_value val;
+	int32_t current_ma = 0;
+
+	/* Always read current — needed for V_shunt correction even if caller
+	 * only asked for voltage. */
+	sensor_channel_get(ina219_dev, SENSOR_CHAN_CURRENT, &val);
+	current_ma = val.val1 * 1000 + val.val2 / 1000;
+
 	if (mv) {
 		sensor_channel_get(ina219_dev, SENSOR_CHAN_VOLTAGE, &val);
-		*mv = val.val1 * 1000 + val.val2 / 1000;
+		int32_t bus_mv = val.val1 * 1000 + val.val2 / 1000;
+		/* V_shunt_mV = I_mA × R_shunt_mΩ / 1000 */
+		int32_t vshunt_mv = (current_ma *
+			DT_PROP(DT_NODELABEL(ina219), shunt_milliohm)) / 1000;
+		*mv = bus_mv + vshunt_mv;
 	}
 	if (ma) {
-		sensor_channel_get(ina219_dev, SENSOR_CHAN_CURRENT, &val);
-		*ma = val.val1 * 1000 + val.val2 / 1000;
+		*ma = current_ma;
 	}
 	if (mw) {
 		sensor_channel_get(ina219_dev, SENSOR_CHAN_POWER, &val);
