@@ -76,8 +76,10 @@
 			reg = <0x41>;
 			status = "disabled";
 			lsb-microamp = <100>;     /* 100 µA LSB → ~3.3 A full-scale */
-			shunt-milliohm = <100>;   /* 100 mΩ shunt (standard breakout) */
+			shunt-milliohm = <10>;    /* 10 mΩ shunt (actual on UPS Module 3S PCB) */
 			brng = <1>;               /* 32 V bus voltage range */
+			badc = <13>;              /* 12-bit, 32-sample avg (17 ms) — matches vendor */
+			sadc = <13>;              /* 12-bit, 32-sample avg (17 ms) — matches vendor */
 		};
 	};
 
