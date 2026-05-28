@@ -27,6 +27,42 @@ static void battery_mon_func(struct k_work *work);
 
 K_WORK_DELAYABLE_DEFINE(battery_mon_work, battery_mon_func);
 
+/* ── INA219 (optional) ───────────────────────────────────────────────────── */
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(ina219), okay)
+#include <zephyr/drivers/sensor.h>
+
+static const struct device *ina219_dev = DEVICE_DT_GET(DT_NODELABEL(ina219));
+
+/* Reads any combination of bus voltage (mv), current (ma), power (mw).
+ * Pass NULL for channels not needed. Returns 0 on success. */
+static int ina219_read(int32_t *mv, int32_t *ma, int32_t *mw)
+{
+	if (!device_is_ready(ina219_dev)) {
+		return -ENODEV;
+	}
+	int err = sensor_sample_fetch(ina219_dev);
+	if (err) {
+		return err;
+	}
+	struct sensor_value val;
+	if (mv) {
+		sensor_channel_get(ina219_dev, SENSOR_CHAN_VOLTAGE, &val);
+		*mv = val.val1 * 1000 + val.val2 / 1000;
+	}
+	if (ma) {
+		sensor_channel_get(ina219_dev, SENSOR_CHAN_CURRENT, &val);
+		*ma = val.val1 * 1000 + val.val2 / 1000;
+	}
+	if (mw) {
+		sensor_channel_get(ina219_dev, SENSOR_CHAN_POWER, &val);
+		*mw = val.val1 * 1000 + val.val2 / 1000;
+	}
+	return 0;
+}
+#endif /* DT_NODE_HAS_STATUS(ina219) */
+
+/* ── Public API ──────────────────────────────────────────────────────────── */
+
 int battery_init() {
 	if (!adc_is_ready_dt(&adc_ch_vbat)) {
 		printk("ADC controller device %s not ready\n", adc_ch_vbat.dev->name);
@@ -44,22 +80,30 @@ int battery_init() {
 
 int battery_read(int32_t *mv, uint8_t *pct)
 {
-	uint16_t buf;
-	int32_t val_mv;
-	struct adc_sequence sequence = {
-		.buffer = &buf,
-		.buffer_size = sizeof(buf),
-	};
+	int32_t val_mv = 0;
+	bool use_adc = true;
 
-	adc_sequence_init_dt(&adc_ch_vbat, &sequence);
-	int err = adc_read_dt(&adc_ch_vbat, &sequence);
-
-	if (err) {
-		return err;
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(ina219), okay)
+	if (ina219_read(&val_mv, NULL, NULL) == 0) {
+		use_adc = false;
 	}
-	val_mv = (int32_t)buf;
-	adc_raw_to_millivolts_dt(&adc_ch_vbat, &val_mv);
-	val_mv = ADC2VBAT(val_mv);
+#endif
+
+	if (use_adc) {
+		uint16_t buf;
+		struct adc_sequence sequence = {
+			.buffer = &buf,
+			.buffer_size = sizeof(buf),
+		};
+		adc_sequence_init_dt(&adc_ch_vbat, &sequence);
+		int err = adc_read_dt(&adc_ch_vbat, &sequence);
+		if (err) {
+			return err;
+		}
+		val_mv = (int32_t)buf;
+		adc_raw_to_millivolts_dt(&adc_ch_vbat, &val_mv);
+		val_mv = ADC2VBAT(val_mv);
+	}
 
 	if (mv) {
 		*mv = val_mv;
@@ -137,6 +181,13 @@ static int cmd_info(const struct shell *sh, size_t argc, char **argv)
 	shell_print(sh, "empty     %d mV  (%.1f V/cell)", VBAT_MIN_MV,  3300 / 1000.0);
 	shell_print(sh, "voltage   %d mV", val);
 	shell_print(sh, "level     %d%%", pct);
+#if DT_NODE_HAS_STATUS(DT_NODELABEL(ina219), okay)
+	int32_t ma, mw;
+	if (ina219_read(NULL, &ma, &mw) == 0) {
+		shell_print(sh, "current   %d mA", ma);
+		shell_print(sh, "power     %d mW", mw);
+	}
+#endif
 	return 0;
 }
 
