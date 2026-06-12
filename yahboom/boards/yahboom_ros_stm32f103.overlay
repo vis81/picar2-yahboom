@@ -32,17 +32,17 @@
     servo1: servo1 {
         compatible = "pwm-servo";
         pwms = <&pwm_sw_t3 2 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
-        init_value = <1550>;
+        init_value = <1280>;
         min_pulse_us = <600>;
-        max_pulse_us = <2500>;
+        max_pulse_us = <1960>;
         status = "okay";
     };
 
     servo2: servo2 {
         compatible = "pwm-servo";
         pwms = <&pwm_sw_t3 3 PWM_MSEC(20) PWM_POLARITY_NORMAL>;
-        init_value = <1550>;
-        min_pulse_us = <600>;
+        init_value = <2150>;
+        min_pulse_us = <1100>;
         max_pulse_us = <2500>;
         status = "okay";
     };
@@ -211,11 +211,11 @@
 	status = "okay";
 };
 
-/* INA219 on bit-bang I2C4 (PC0=SCL, PC1=SDA) */
+/* INA219 on bit-bang I2C4 (PC0=SCL, PC1=SDA) — disabled; PC0/PC1 freed for pan/tilt servos */
 &i2c4 {
-	status = "okay";
+	status = "disabled";
 	ina219: ina219@41 {
-		status = "okay";
+		status = "disabled";
 	};
 };
 
