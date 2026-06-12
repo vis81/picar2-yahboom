@@ -8,7 +8,8 @@ Usage:
 Controls:
     Left / Right sliders : wheel velocity in mm/s (-3000 … +3000)
     Steer slider         : steering pulse delta from center in µs (-600 … +600; 0 = center)
-    CMD_VEL rate         : how often the current slider values are sent
+    Pan / Tilt sliders   : pan/tilt pulse delta from center in µs (-700 … +700; 0 = center)
+    CMD_VEL rate         : how often the current slider values are sent (pan/tilt sent at same rate)
     Stream rate dropdowns: ask the STM32 to push data at that Hz
     Double-click a motor slider to zero it.
 """
@@ -42,6 +43,7 @@ MSG_REQ           = 0x81
 MSG_SET_RATE      = 0x82
 MSG_GET_STATS     = 0x83
 MSG_TIMESYNC      = 0x84
+MSG_SERVO_WRITE   = 0x87  # [servo_id u8][delta_us i16 LE]
 MSG_TIMESYNC_RESP = 0x05
 
 TYPE_STATS = 0x04
@@ -85,6 +87,10 @@ def enc_get_stats(clear: bool = False) -> bytes:
 
 def enc_timesync(t1_us: int, t4_prev_us: int = 0) -> bytes:
     return _frame(MSG_TIMESYNC, struct.pack("<qq", t1_us, t4_prev_us))
+
+def enc_servo_write(servo_id: int, delta_us: int) -> bytes:
+    """servo_id: 1=pan, 2=tilt; delta_us: signed µs from center"""
+    return _frame(MSG_SERVO_WRITE, struct.pack("<Bh", servo_id, delta_us))
 
 
 # ── Frame decoding ────────────────────────────────────────────────────────────
@@ -219,9 +225,10 @@ class App(tk.Tk):
 
         self._rate_dq = {t: collections.deque(maxlen=50) for t in STREAM_NAMES}
 
-        self._tx_cmd_vel  = 0
-        self._tx_req      = 0
-        self._tx_set_rate = 0
+        self._tx_cmd_vel    = 0
+        self._tx_req        = 0
+        self._tx_set_rate   = 0
+        self._tx_servo_write = 0
         self._rx_stream   = {t: 0 for t in STREAM_NAMES}
         self._last_fw_stats_req = 0.0
 
@@ -282,9 +289,10 @@ class App(tk.Tk):
         _lbl(row1, "rx imu:",      10); self._stat_tx_imu        = _lbl(row1, "0", 11, width=8)
         _lbl(row1, "rx battery:",  12); self._stat_tx_bat        = _lbl(row1, "0", 13, width=8)
 
-        _lbl(row2, "tx cmd_vel:",  0); self._stat_tx_cmd_vel  = _lbl(row2, "0", 1, width=8)
-        _lbl(row2, "tx req:",      2); self._stat_tx_req      = _lbl(row2, "0", 3, width=6)
-        _lbl(row2, "tx set_rate:", 4); self._stat_tx_set_rate = _lbl(row2, "0", 5, width=6)
+        _lbl(row2, "tx cmd_vel:",    0); self._stat_tx_cmd_vel    = _lbl(row2, "0", 1, width=8)
+        _lbl(row2, "tx req:",        2); self._stat_tx_req        = _lbl(row2, "0", 3, width=6)
+        _lbl(row2, "tx set_rate:",   4); self._stat_tx_set_rate   = _lbl(row2, "0", 5, width=6)
+        _lbl(row2, "tx servo_wr:",   6); self._stat_tx_servo_write = _lbl(row2, "0", 7, width=8)
 
         ttk.Button(sf, text="Clear", command=self._clear_stats).pack(
             side="right", padx=8, pady=4)
@@ -343,7 +351,7 @@ class App(tk.Tk):
     def _clear_stats(self):
         if self._rx:
             self._rx.clear_stats()
-        self._tx_cmd_vel = self._tx_req = self._tx_set_rate = 0
+        self._tx_cmd_vel = self._tx_req = self._tx_set_rate = self._tx_servo_write = 0
         self._rx_stream = {t: 0 for t in STREAM_NAMES}
         for dq in self._rate_dq.values():
             dq.clear()
@@ -380,17 +388,21 @@ class App(tk.Tk):
         self._left_var  = tk.IntVar(value=0)
         self._right_var = tk.IntVar(value=0)
         self._steer_var = tk.IntVar(value=0)
+        self._pan_var   = tk.IntVar(value=0)
+        self._tilt_var  = tk.IntVar(value=0)
 
         self._make_slider(ctrl, "Left (mm/s)",  self._left_var,  -3000, 3000, row=0)
         self._make_slider(ctrl, "Right (mm/s)", self._right_var, -3000, 3000, row=1)
         self._make_slider(ctrl, "Steer (µs)",   self._steer_var,  -600,  600, row=2)
+        self._make_slider(ctrl, "Pan (µs)",      self._pan_var,   -700,  700, row=3)
+        self._make_slider(ctrl, "Tilt (µs)",     self._tilt_var,  -700,  700, row=4)
 
         ttk.Separator(ctrl, orient="horizontal").grid(
-            row=3, column=0, columnspan=3, sticky="ew", pady=(6, 4))
+            row=5, column=0, columnspan=3, sticky="ew", pady=(6, 4))
 
         # CMD_VEL rate + on/off
         rf = ttk.Frame(ctrl)
-        rf.grid(row=4, column=0, columnspan=3, padx=6, pady=2, sticky="w")
+        rf.grid(row=6, column=0, columnspan=3, padx=6, pady=2, sticky="w")
         ttk.Label(rf, text="CMD_VEL rate:").pack(side="left")
         self._cmd_rate_var = tk.StringVar(value="10")
         ttk.Combobox(rf, textvariable=self._cmd_rate_var, width=5,
@@ -399,18 +411,18 @@ class App(tk.Tk):
 
         self._send_btn = ttk.Button(ctrl, text="Send CMD_VEL  [ OFF ]",
                                     command=self._toggle_send, width=24)
-        self._send_btn.grid(row=5, column=0, columnspan=3, padx=6, pady=4, sticky="ew")
+        self._send_btn.grid(row=7, column=0, columnspan=3, padx=6, pady=4, sticky="ew")
 
         ttk.Separator(ctrl, orient="horizontal").grid(
-            row=6, column=0, columnspan=3, sticky="ew", pady=(4, 6))
+            row=8, column=0, columnspan=3, sticky="ew", pady=(4, 6))
 
         ttk.Label(ctrl, text="Set stream rates:", font=("", 9, "bold")).grid(
-            row=7, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 4))
+            row=9, column=0, columnspan=3, sticky="w", padx=6, pady=(0, 4))
 
         self._stream_rate_vars: dict[int, tk.StringVar] = {}
         defaults = {TYPE_JOINT: "100", TYPE_IMU: "200", TYPE_BAT: "1"}
         for i, (sid, lbl) in enumerate(STREAM_LABELS.items()):
-            row = 8 + i
+            row = 10 + i
             ttk.Label(ctrl, text=f"{lbl}:").grid(
                 row=row, column=0, sticky="e", padx=(6, 2), pady=2)
             v = tk.StringVar(value=defaults[sid])
@@ -422,7 +434,7 @@ class App(tk.Tk):
                 row=row, column=2, padx=(2, 6))
 
         ttk.Button(ctrl, text="Set All", command=self._set_all_rates).grid(
-            row=11, column=0, columnspan=3, padx=6, pady=(6, 4), sticky="ew")
+            row=13, column=0, columnspan=3, padx=6, pady=(6, 4), sticky="ew")
 
     def _make_slider(self, parent, label: str, var: tk.IntVar,
                      lo: int, hi: int, row: int):
@@ -487,7 +499,7 @@ class App(tk.Tk):
         self._rx.start()
         for dq in self._rate_dq.values():
             dq.clear()
-        self._tx_cmd_vel = self._tx_req = self._tx_set_rate = 0
+        self._tx_cmd_vel = self._tx_req = self._tx_set_rate = self._tx_servo_write = 0
         self._rx_stream  = {t: 0 for t in STREAM_NAMES}
         self._sync_t1_us = self._sync_last_t4_us = 0
         self._sync_count = self._sync_hist_idx = 0
@@ -513,6 +525,8 @@ class App(tk.Tk):
                     for sid in STREAM_NAMES:
                         ser.write(enc_set_rate(sid, 0))
                     ser.write(enc_cmd_vel(0, 0, 0))
+                    ser.write(enc_servo_write(1, 0))
+                    ser.write(enc_servo_write(2, 0))
                     time.sleep(0.05)
                     ser.close()
             except Exception:
@@ -564,6 +578,9 @@ class App(tk.Tk):
                 self._steer_var.get(),
             ))
             self._tx_cmd_vel += 1
+            self._write(enc_servo_write(1, -self._pan_var.get()))
+            self._write(enc_servo_write(2, self._tilt_var.get()))
+            self._tx_servo_write += 2
             self._sender_stop.wait(1.0 / hz)
 
     def _set_stream_rate(self, sid: int):
@@ -687,9 +704,10 @@ class App(tk.Tk):
         self._stat_tx_joint.config(  text=str(self._rx_stream[TYPE_JOINT]))
         self._stat_tx_imu.config(    text=str(self._rx_stream[TYPE_IMU]))
         self._stat_tx_bat.config(    text=str(self._rx_stream[TYPE_BAT]))
-        self._stat_tx_cmd_vel.config( text=str(self._tx_cmd_vel))
-        self._stat_tx_req.config(     text=str(self._tx_req))
-        self._stat_tx_set_rate.config(text=str(self._tx_set_rate))
+        self._stat_tx_cmd_vel.config(    text=str(self._tx_cmd_vel))
+        self._stat_tx_req.config(        text=str(self._tx_req))
+        self._stat_tx_set_rate.config(   text=str(self._tx_set_rate))
+        self._stat_tx_servo_write.config(text=str(self._tx_servo_write))
 
     def _refresh_stream(self, sid: int, data: dict):
         rate_lbl, data_lbl = self._stream_widgets[sid]
