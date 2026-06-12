@@ -71,6 +71,7 @@ int servo_init(void)
 		center_us[i] = servo_init_us[i];
 	}
 	settings_load_subtree("servo");
+	servo_neutral_all();
 	return 0;
 }
 
