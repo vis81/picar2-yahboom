@@ -123,7 +123,7 @@ static void callback(struct input_event *evt) {
 		printk("pw %u d %u thr %u vel %d brk %u mode %u\n", pulse_width, dir, throttle, vel, brake, rc_mode);
 	}
 	if (rc_enable || rc_override) {
-		ret = servo_steer((int16_t)pulse_width);
+		ret = servo_write_delta(0, (int16_t)pulse_width);
 		if (ret < 0) {
 			printk("Error %d: failed to set pulse width\n", ret);
 		}

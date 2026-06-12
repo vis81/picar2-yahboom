@@ -14,6 +14,7 @@
 #define MSG_TIMESYNC  0x84
 #define MSG_PID_SET        0x85
 #define MSG_SERVO_CENTER   0x86
+#define MSG_SERVO_WRITE    0x87  /* [0] servo_id  [1:2] delta_us LE (signed, from center) */
 
 void comms_init(void);
 

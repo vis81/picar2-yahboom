@@ -100,13 +100,14 @@ void servo_neutral_all(void)
 		servo_write_id(i, center_us[i]);
 }
 
-/* signed µs delta from center → servo0 */
-int servo_steer(int16_t delta_us)
+int servo_write_delta(int id, int16_t delta_us)
 {
-	int32_t us = (int32_t)center_us[0] + (int32_t)delta_us;
-	return servo_write_id(0, (uint16_t)CLAMP(us,
-	                          (int32_t)servo_min_us[0],
-	                          (int32_t)servo_max_us[0]));
+	if (id < 0 || id >= NUM_SERVOS)
+		return -EINVAL;
+	int32_t us = (int32_t)center_us[id] + (int32_t)delta_us;
+	return servo_write_id(id, (uint16_t)CLAMP(us,
+	                          (int32_t)servo_min_us[id],
+	                          (int32_t)servo_max_us[id]));
 }
 
 /* servo0 → signed µs delta from center */

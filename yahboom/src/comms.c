@@ -260,7 +260,7 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		if (!rc_get_override()) {
 			motor_speed(MOTOR_L, cmd_vel_L);
 			motor_speed(MOTOR_R, cmd_vel_R);
-			servo_steer((int16_t)sys_get_le16(&payload[4]));
+			servo_write_delta(0, (int16_t)sys_get_le16(&payload[4]));
 		}
 		break;
 
@@ -335,6 +335,16 @@ static void comms_rx(uint8_t type, const uint8_t *payload, uint8_t len)
 		/* [0] servo_id  [1:2] center_us LE */
 		if (len < 3) { rx_short++; break; }
 		servo_set_center(payload[0], sys_get_le16(&payload[1]));
+		break;
+	}
+
+	case MSG_SERVO_WRITE: {
+		/* [0] servo_id  [1:2] delta_us LE (signed, from center) */
+		if (len < 3) { rx_short++; break; }
+		if (!rc_get_override()) {
+			servo_write_delta(payload[0],
+					  (int16_t)sys_get_le16(&payload[1]));
+		}
 		break;
 	}
 
