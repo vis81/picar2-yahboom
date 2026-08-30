@@ -30,11 +30,17 @@ BUILD_ASSERT(PI_INIT_PRIO > CONFIG_GPIO_INIT_PRIORITY,
 /* The 3.3 V rail comes up well inside this; not a boot-complete wait. */
 #define PI_RAIL_WAIT_MS  3000
 #define PI_POLL_MS       50
+/* Must exceed the debounce in the Pi's dtoverlay=gpio-shutdown (default 100 ms,
+ * 200 ms as configured here). Edge-triggered, so pulse — holding it low blocks
+ * the next trigger and would re-fire on the Pi's following boot. */
+#define PI_REQ_PULSE_MS  300
 
 static const struct gpio_dt_spec global_en =
 	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), pi_global_en_gpios);
 static const struct gpio_dt_spec run =
 	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), pi_run_gpios);
+static const struct gpio_dt_spec shutdown_req =
+	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), pi_shutdown_req_gpios);
 
 /* True while we hold GLOBAL_EN low. The pin itself cannot be read back for
  * this — released and Hi-Z it follows the Pi's pull-up, which is dead when the
@@ -95,6 +101,16 @@ int pi_init(void)
 		return -ENODEV;
 	}
 
+	/* Open drain, released. Not claimed in the early hook: Hi-Z with the
+	 * Pi's pull-up is already the unasserted state, and asserting it before
+	 * the kernel is up would ask a booting Pi to shut down. */
+	int rc = gpio_pin_configure_dt(&shutdown_req,
+				       GPIO_OUTPUT_INACTIVE | GPIO_OPEN_DRAIN);
+	if (rc) {
+		LOG_ERR("SHUTDOWN_REQ configure failed (%d)", rc);
+		return rc;
+	}
+
 	LOG_INF("pi power control — Pi %s, GLOBAL_EN %s, reset cause 0x%08x",
 		pi_is_on() ? "on" : "off",
 		global_en_held ? "held" : "released", reset_cause);
@@ -147,12 +163,15 @@ int pi_shutdown(uint32_t grace_ms)
 		return 0;
 	}
 
-	/* No SHUTDOWN_REQ line is fitted yet, so nothing here can ask the Pi to
-	 * stop — the window only lets a shutdown started by someone else
-	 * finish, and gives an operator who sees the warning time to run
-	 * poweroff. Once the wire exists, assert it here and this becomes a
-	 * genuine graceful shutdown with the cut as the fallback. */
-	LOG_WRN("waiting up to %u ms for the Pi to go down", grace_ms);
+	/* Ask first. The Pi's kernel turns this edge into KEY_POWER and logind
+	 * runs a clean poweroff — which keeps working when ROS is wedged or the
+	 * container is dead, exactly when it matters. */
+	gpio_pin_set_dt(&shutdown_req, 1);
+	k_msleep(PI_REQ_PULSE_MS);
+	gpio_pin_set_dt(&shutdown_req, 0);
+
+	LOG_INF("SHUTDOWN_REQ sent, waiting up to %u ms for the Pi to go down",
+		grace_ms);
 
 	for (uint32_t waited = 0; waited < grace_ms; waited += PI_POLL_MS) {
 		if (!pi_is_on()) {
@@ -162,7 +181,7 @@ int pi_shutdown(uint32_t grace_ms)
 		k_msleep(PI_POLL_MS);
 	}
 
-	LOG_ERR("Pi still up after %u ms — cutting power, filesystem not synced",
+	LOG_ERR("Pi ignored SHUTDOWN_REQ for %u ms — cutting power, filesystem not synced",
 		grace_ms);
 	pi_power_off();
 	return -ETIMEDOUT;

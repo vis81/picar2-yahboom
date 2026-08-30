@@ -69,6 +69,12 @@
 		 *   is not. Never driven — it is the SoC reset line. */
 		pi-global-en-gpios = <&gpioa 1 GPIO_ACTIVE_LOW>;
 		pi-run-gpios = <&gpioa 0 GPIO_ACTIVE_HIGH>;
+
+		/* SHUTDOWN_REQ (PC0) → the Pi's GPIO26, running
+		 * dtoverlay=gpio-shutdown. Open-drain, idle Hi-Z; a low pulse is
+		 * turned into KEY_POWER by the Pi's kernel and logind runs a
+		 * clean poweroff. Freed from pwm_sw_t3 channel 4 below. */
+		pi-shutdown-req-gpios = <&gpioc 0 GPIO_ACTIVE_LOW>;
 	};
 
 	motor_r: motor_r {
@@ -131,11 +137,12 @@
 		status = "okay";
 		zero-latency;
 		label = "servo_pwm";
+		/* Channel 4 (PC0) was declared but never referenced by a servo;
+		 * PC0 is now SHUTDOWN_REQ, see zephyr,user above. */
 		gpios = <&gpioc 3 GPIO_ACTIVE_HIGH>,
 				<&gpioc 2 GPIO_ACTIVE_HIGH>,
-				<&gpioc 1 GPIO_ACTIVE_HIGH>,
-				<&gpioc 0 GPIO_ACTIVE_HIGH>;
-		channels = <1 2 3 4>;
+				<&gpioc 1 GPIO_ACTIVE_HIGH>;
+		channels = <1 2 3>;
 		#pwm-cells = <3>;
 	};
 };

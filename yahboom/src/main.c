@@ -195,9 +195,10 @@ static int cmd_sys_halt(const struct shell *sh, size_t argc, char **argv)
 static int cmd_sys_sleep(const struct shell *sh, size_t argc, char **argv)
 {
 	if (pi_is_on()) {
-		shell_error(sh, "Pi is running — shut it down first "
-			        "(no SHUTDOWN_REQ wire yet; 'pi off' hard-cuts it)");
-		return -EBUSY;
+		shell_print(sh, "bringing the Pi down first");
+		if (pi_shutdown(PI_SHUTDOWN_GRACE_MS) == -ETIMEDOUT) {
+			shell_warn(sh, "Pi had to be cut — filesystem not synced");
+		}
 	}
 
 	shell_print(sh, "entering STOP — press the user button to wake");
