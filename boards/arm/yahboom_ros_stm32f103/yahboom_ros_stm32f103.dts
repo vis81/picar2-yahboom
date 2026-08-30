@@ -25,7 +25,9 @@
 	leds {
 		compatible = "gpio-leds";
 		green_led_1: led_1 {
-			gpios = <&gpioc 13 GPIO_ACTIVE_LOW>;
+			/* Active high — PC13 sources into the LED. Measured on
+			 * hardware: driving the pin low leaves it dark. */
+			gpios = <&gpioc 13 GPIO_ACTIVE_HIGH>;
 			label = "User LD1";
 		};
 	};

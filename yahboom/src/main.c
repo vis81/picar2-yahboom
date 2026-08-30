@@ -32,6 +32,7 @@
 #include "buzzer.h"
 #include "comms.h"
 #include "imu.h"
+#include "led.h"
 #include "motor.h"
 #include "pi.h"
 #include "power.h"
@@ -53,6 +54,7 @@ void system_peripherals_down(void)
 	servo_neutral_all();
 	buzzer_stop();
 	imu_shutdown();
+	led_off();
 }
 
 void system_shutdown(void)
@@ -256,6 +258,7 @@ int main(void)
 	servo_init();
 	rc_init();
 	pi_init();
+	led_init();
 	comms_init();
 
 	//buzzer_play(BUZZER_FUNKYTOWN, 50);
