@@ -16,6 +16,10 @@ void power_standby(void);
  * restore the clock tree. Returns only on failure to enter STOP. */
 int power_stop(void);
 
+/* Stop RC, motors, servos, buzzer and IMU. Split out so the battery monitor
+ * can drop the load first and deal with the Pi afterwards. */
+void system_peripherals_down(void);
+
 /* Orderly shutdown: RC → motors → servos → buzzer → IMU → STANDBY. */
 void system_shutdown(void);
 

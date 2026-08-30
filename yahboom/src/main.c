@@ -46,7 +46,7 @@ LOG_MODULE_REGISTER(main, LOG_LEVEL_DBG);
 /* User push button, PD2 — the wake source for STOP mode. */
 static const struct gpio_dt_spec wake_button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 
-static void peripherals_down(void)
+void system_peripherals_down(void)
 {
 	rc_set_enable(0);
 	motor_stop_all();
@@ -57,14 +57,14 @@ static void peripherals_down(void)
 
 void system_shutdown(void)
 {
-	peripherals_down();
+	system_peripherals_down();
 	power_standby();
 }
 
 /* Returns only on failure — a successful STOP is exited by rebooting. */
 int system_sleep(void)
 {
-	peripherals_down();
+	system_peripherals_down();
 	return power_stop();
 }
 

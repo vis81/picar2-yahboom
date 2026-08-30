@@ -141,6 +141,33 @@ int pi_power_on(uint32_t assert_ms)
 	return -ETIMEDOUT;
 }
 
+int pi_shutdown(uint32_t grace_ms)
+{
+	if (!pi_is_on()) {
+		return 0;
+	}
+
+	/* No SHUTDOWN_REQ line is fitted yet, so nothing here can ask the Pi to
+	 * stop — the window only lets a shutdown started by someone else
+	 * finish, and gives an operator who sees the warning time to run
+	 * poweroff. Once the wire exists, assert it here and this becomes a
+	 * genuine graceful shutdown with the cut as the fallback. */
+	LOG_WRN("waiting up to %u ms for the Pi to go down", grace_ms);
+
+	for (uint32_t waited = 0; waited < grace_ms; waited += PI_POLL_MS) {
+		if (!pi_is_on()) {
+			LOG_INF("Pi down after %u ms", waited);
+			return 0;
+		}
+		k_msleep(PI_POLL_MS);
+	}
+
+	LOG_ERR("Pi still up after %u ms — cutting power, filesystem not synced",
+		grace_ms);
+	pi_power_off();
+	return -ETIMEDOUT;
+}
+
 int pi_power_off(void)
 {
 	gpio_pin_set_dt(&global_en, 1);
@@ -229,12 +256,44 @@ static int cmd_pi_off(const struct shell *sh, size_t argc, char **argv)
 	return rc;
 }
 
+static int cmd_pi_shutdown(const struct shell *sh, size_t argc, char **argv)
+{
+	uint32_t grace_s = PI_SHUTDOWN_GRACE_MS / 1000;
+
+	if (argc > 1) {
+		grace_s = strtoul(argv[1], NULL, 10);
+		if (grace_s == 0 || grace_s > 300) {
+			shell_error(sh, "grace_s out of range (1..300)");
+			return -EINVAL;
+		}
+	}
+
+	if (!pi_is_on()) {
+		shell_print(sh, "pi already off");
+		return 0;
+	}
+
+	shell_print(sh, "waiting up to %u s for the Pi to go down, then cutting",
+		    grace_s);
+
+	int rc = pi_shutdown(grace_s * 1000);
+
+	if (rc == -ETIMEDOUT) {
+		shell_warn(sh, "grace expired — power cut, filesystem not synced");
+		return rc;
+	}
+	shell_print(sh, "pi down");
+	return rc;
+}
+
 SHELL_STATIC_SUBCMD_SET_CREATE(sub_pi,
 	SHELL_CMD(status, NULL, "print Pi power state (RUN) and GLOBAL_EN hold", cmd_pi_status),
 	SHELL_CMD_ARG(on, NULL, "release GLOBAL_EN to power on [assert_ms]",
 		      cmd_pi_on, 1, 1),
 	SHELL_CMD(off, NULL, "hold GLOBAL_EN low — hard cut, NOT a clean shutdown",
 		  cmd_pi_off),
+	SHELL_CMD_ARG(shutdown, NULL, "wait for the Pi to go down, then cut [grace_s]",
+		      cmd_pi_shutdown, 1, 1),
 	SHELL_SUBCMD_SET_END
 );
 

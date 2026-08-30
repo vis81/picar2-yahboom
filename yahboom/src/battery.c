@@ -8,6 +8,8 @@
 #include <zephyr/drivers/adc.h>
 #include <zephyr/drivers/adc_compat.h>
 #include <zephyr/shell/shell.h>
+#include <errno.h>
+#include "pi.h"
 #include "power.h"
 
 #define ADC2VBAT(x)  ((x) * 4145 / 1000)
@@ -137,8 +139,28 @@ static void battery_mon_func(struct k_work *work)
 		return;
 	}
 	if (val < VBAT_CRIT_MV) {
-		printk("CRITICAL: battery %d mV — entering standby\n", val);
-		system_shutdown();
+		printk("CRITICAL: battery %d mV — shutting down\n", val);
+
+		/* Drop the load first: motors and servos are most of the draw,
+		 * and driving on a pack this low is how cells get damaged. */
+		system_peripherals_down();
+
+		/* Then the Pi. It is cut if it does not go down by itself —
+		 * a deep-discharged pack is a worse outcome than a dirty
+		 * filesystem, and leaving a ~3 W load running guarantees one.
+		 * This blocks the system workqueue for up to the grace period,
+		 * which is acceptable only because nothing after this point
+		 * matters: the next step is sleep. pi_shutdown() logs the
+		 * outcome itself. */
+		(void)pi_shutdown(PI_SHUTDOWN_GRACE_MS);
+
+		/* STOP, not STANDBY: STANDBY tri-states GLOBAL_EN, which
+		 * releases the Pi gate and reboots the load we just removed. */
+		int rc = power_stop();
+
+		/* Only returns if STOP could not be entered. */
+		printk("STOP failed (%d) — load is down, still draining\n", rc);
+		k_work_reschedule(&battery_mon_work, K_SECONDS(5));
 		return;
 	}
 	if (val < VBAT_LOW_MV) {
