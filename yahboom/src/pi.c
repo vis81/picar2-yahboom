@@ -34,6 +34,9 @@ BUILD_ASSERT(PI_INIT_PRIO > CONFIG_GPIO_INIT_PRIORITY,
  * 200 ms as configured here). Edge-triggered, so pulse — holding it low blocks
  * the next trigger and would re-fire on the Pi's following boot. */
 #define PI_REQ_PULSE_MS  300
+#define PI_BTN_DEBOUNCE_MS 200
+#define PI_BTN_STACK       1024
+#define PI_BTN_PRIO        7
 
 static const struct gpio_dt_spec global_en =
 	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), pi_global_en_gpios);
@@ -41,6 +44,9 @@ static const struct gpio_dt_spec run =
 	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), pi_run_gpios);
 static const struct gpio_dt_spec shutdown_req =
 	GPIO_DT_SPEC_GET(DT_PATH(zephyr_user), pi_shutdown_req_gpios);
+/* Same node power_stop() arms as the STOP wake source; configuring it twice is
+ * harmless, and here it drives the press handler. */
+static const struct gpio_dt_spec button = GPIO_DT_SPEC_GET(DT_ALIAS(sw0), gpios);
 
 /* True while we hold GLOBAL_EN low. The pin itself cannot be read back for
  * this — released and Hi-Z it follows the Pi's pull-up, which is dead when the
@@ -94,6 +100,55 @@ static int pi_early_hold(void)
 }
 SYS_INIT(pi_early_hold, PRE_KERNEL_1, PI_INIT_PRIO);
 
+/* ── User button (PD2): press toggles the Pi ─────────────────────────────── */
+
+static struct gpio_callback button_cb;
+static K_SEM_DEFINE(button_sem, 0, 1);
+
+static void button_isr(const struct device *port, struct gpio_callback *cb,
+		       uint32_t pins)
+{
+	ARG_UNUSED(port);
+	ARG_UNUSED(cb);
+	ARG_UNUSED(pins);
+
+	static int64_t last_ms;
+	int64_t now = k_uptime_get();
+
+	if (now - last_ms < PI_BTN_DEBOUNCE_MS) {
+		return;
+	}
+	last_ms = now;
+	k_sem_give(&button_sem);
+}
+
+/* Its own thread, not the system workqueue: pi_shutdown() can block for the
+ * whole grace period, which would stall every other delayed work item. */
+static void button_thread(void *a, void *b, void *c)
+{
+	ARG_UNUSED(a);
+	ARG_UNUSED(b);
+	ARG_UNUSED(c);
+
+	while (true) {
+		k_sem_take(&button_sem, K_FOREVER);
+
+		if (pi_is_on()) {
+			LOG_INF("button: bringing the Pi down");
+			pi_shutdown(PI_SHUTDOWN_GRACE_MS);
+		} else {
+			LOG_INF("button: powering the Pi on");
+			pi_power_on(PI_ASSERT_MS);
+		}
+
+		/* Discard presses that landed while the action was running. */
+		k_sem_reset(&button_sem);
+	}
+}
+
+K_THREAD_DEFINE(pi_button_tid, PI_BTN_STACK, button_thread, NULL, NULL, NULL,
+		PI_BTN_PRIO, 0, 0);
+
 int pi_init(void)
 {
 	if (!gpio_is_ready_dt(&run) || !gpio_is_ready_dt(&global_en)) {
@@ -109,6 +164,17 @@ int pi_init(void)
 	if (rc) {
 		LOG_ERR("SHUTDOWN_REQ configure failed (%d)", rc);
 		return rc;
+	}
+
+	/* Pull-up: the button shorts to ground and the board has no external
+	 * one. Same pin power_stop() uses to wake from STOP. */
+	if (gpio_is_ready_dt(&button)) {
+		gpio_pin_configure_dt(&button, GPIO_INPUT | GPIO_PULL_UP);
+		gpio_init_callback(&button_cb, button_isr, BIT(button.pin));
+		gpio_add_callback_dt(&button, &button_cb);
+		gpio_pin_interrupt_configure_dt(&button, GPIO_INT_EDGE_TO_ACTIVE);
+	} else {
+		LOG_ERR("user button not ready — press-to-toggle inactive");
 	}
 
 	LOG_INF("pi power control — Pi %s, GLOBAL_EN %s, reset cause 0x%08x",
