@@ -32,6 +32,7 @@
 #include "comms.h"
 #include "imu.h"
 #include "motor.h"
+#include "pi.h"
 #include "power.h"
 #include "rc.h"
 #include "servo.h"
@@ -165,6 +166,7 @@ int main(void)
 	motor_init();
 	servo_init();
 	rc_init();
+	pi_init();
 	comms_init();
 
 	//buzzer_play(BUZZER_FUNKYTOWN, 50);

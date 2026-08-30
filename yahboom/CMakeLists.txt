@@ -14,6 +14,6 @@ if(NOT APP_GIT_SHA)
     set(APP_GIT_SHA "unknown")
 endif()
 
-target_sources(app PRIVATE src/main.c src/buzzer.c src/battery.c src/motor.c src/rc.c src/servo.c src/imu.c src/selftest.c src/protocol.c src/comms.c)
+target_sources(app PRIVATE src/main.c src/buzzer.c src/battery.c src/motor.c src/rc.c src/servo.c src/imu.c src/selftest.c src/protocol.c src/comms.c src/pi.c)
 target_sources_ifdef(CONFIG_COMMS_MON app PRIVATE src/comms_mon.c)
 target_compile_definitions(app PRIVATE APP_GIT_SHA="${APP_GIT_SHA}")
